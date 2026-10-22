@@ -84,7 +84,7 @@ if st.button("🔄 Refresh Energy Data", type="primary", use_container_width=Tru
                     processed_gids.add(gid)
                     break
 
-            # Fetch data for Current Month (Property -> Usage -> Estimated Cost as last column)
+            # Fetch data for Current Month (Table columns explicitly ordered: Property -> Usage -> Cost)
             curr_results = []
             for item in devices_map:
                 try:
@@ -109,7 +109,7 @@ if st.button("🔄 Refresh Energy Data", type="primary", use_container_width=Tru
                         "Estimated Cost ($)": 30.0
                     })
 
-            # Fetch data for Previous Month (Property -> Usage -> Estimated Cost as last column)
+            # Fetch data for Previous Month (Table columns explicitly ordered: Property -> Usage -> Cost)
             prev_results = []
             for item in devices_map:
                 try:
@@ -147,7 +147,7 @@ if st.button("🔄 Refresh Energy Data", type="primary", use_container_width=Tru
                     st.metric(label="Total Portfolio Usage", value=f"{total_curr_kwh:,.2f} kWh")
                     st.metric(label="Total Portfolio Cost", value=f"${total_curr_cost:,.2f}")
                     
-                    st.dataframe(curr_results, use_container_width=True)
+                    st.dataframe(curr_results, use_container_width=True, hide_index=True)
                 else:
                     st.warning("No data found for current month.")
 
@@ -162,7 +162,7 @@ if st.button("🔄 Refresh Energy Data", type="primary", use_container_width=Tru
                     st.metric(label="Total Portfolio Usage", value=f"{total_prev_kwh:,.2f} kWh")
                     st.metric(label="Total Portfolio Cost", value=f"${total_prev_cost:,.2f}")
                     
-                    st.dataframe(prev_results, use_container_width=True)
+                    st.dataframe(prev_results, use_container_width=True, hide_index=True)
                 else:
                     st.warning("No data found for previous month.")
 

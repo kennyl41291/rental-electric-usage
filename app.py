@@ -6,14 +6,18 @@ import datetime
 st.set_page_config(page_title="Emporia Energy Dashboard", page_icon="⚡", layout="centered")
 
 st.title("⚡ Emporia Energy Dashboard")
-st.write("Live electricity consumption report for current month-to-date and previous month.")
+st.write("Live electricity consumption report and cost breakdown for your properties.")
 
 # Hardcoded credentials
 USERNAME = "kennyl41291@gmail.com"
 PASSWORD = "19585723a"
 
+# Cost calculation function: (usage * $0.44) + $30
+def calculate_cost(kwh):
+    return round((kwh * 0.44) + 30.0, 2)
+
 if st.button("🔄 Refresh Energy Data", type="primary"):
-    with st.spinner("Connecting to Emporia & calculating usage for both months..."):
+    with st.spinner("Connecting to Emporia & calculating usage and costs..."):
         try:
             vue = PyEmVue()
             vue.login(username=USERNAME, password=PASSWORD)
@@ -68,10 +72,19 @@ if st.button("🔄 Refresh Energy Data", type="primary"):
                         scale=Scale.DAY.value,
                         unit=Unit.KWH.value
                     )
-                    total_usage = sum(v for v in usage_list if v is not None) if usage_list else 0.0
-                    curr_results.append({"Property / Device": item["name"], "Usage (kWh)": round(total_usage, 2)})
+                    total_usage = round(sum(v for v in usage_list if v is not None) if usage_list else 0.0, 2)
+                    est_cost = calculate_cost(total_usage)
+                    curr_results.append({
+                        "Property / Device": item["name"], 
+                        "Usage (kWh)": total_usage, 
+                        "Estimated Cost ($)": est_cost
+                    })
                 except Exception:
-                    curr_results.append({"Property / Device": item["name"], "Usage (kWh)": 0.0})
+                    curr_results.append({
+                        "Property / Device": item["name"], 
+                        "Usage (kWh)": 0.0, 
+                        "Estimated Cost ($)": 30.0
+                    })
 
             # Fetch data for Previous Month
             prev_results = []
@@ -84,10 +97,19 @@ if st.button("🔄 Refresh Energy Data", type="primary"):
                         scale=Scale.DAY.value,
                         unit=Unit.KWH.value
                     )
-                    total_usage = sum(v for v in usage_list if v is not None) if usage_list else 0.0
-                    prev_results.append({"Property / Device": item["name"], "Usage (kWh)": round(total_usage, 2)})
+                    total_usage = round(sum(v for v in usage_list if v is not None) if usage_list else 0.0, 2)
+                    est_cost = calculate_cost(total_usage)
+                    prev_results.append({
+                        "Property / Device": item["name"], 
+                        "Usage (kWh)": total_usage, 
+                        "Estimated Cost ($)": est_cost
+                    })
                 except Exception:
-                    prev_results.append({"Property / Device": item["name"], "Usage (kWh)": 0.0})
+                    prev_results.append({
+                        "Property / Device": item["name"], 
+                        "Usage (kWh)": 0.0, 
+                        "Estimated Cost ($)": 30.0
+                    })
 
             # Organize UI into Tabs
             tab1, tab2 = st.tabs([f"📅 Current MTD ({curr_month_name})", f"📅 Previous Month ({prev_month_name})"])
@@ -96,8 +118,13 @@ if st.button("🔄 Refresh Energy Data", type="primary"):
                 st.subheader(f"Current Month-to-Date: {curr_month_name}")
                 st.caption(f"Period: {curr_start.strftime('%Y-%m-%d')} to {curr_end.strftime('%Y-%m-%d')}")
                 if curr_results:
-                    total_curr = sum(r["Usage (kWh)"] for r in curr_results)
-                    st.metric(label="Total Portfolio (Current MTD)", value=f"{total_curr:,.2f} kWh")
+                    total_curr_kwh = sum(r["Usage (kWh)"] for r in curr_results)
+                    total_curr_cost = sum(r["Estimated Cost ($)"] for r in curr_results)
+                    
+                    col1, col2 = st.columns(2)
+                    col1.metric(label="Total Portfolio Usage", value=f"{total_curr_kwh:,.2f} kWh")
+                    col2.metric(label="Total Portfolio Cost", value=f"${total_curr_cost:,.2f}")
+                    
                     st.dataframe(curr_results, use_container_width=True)
                 else:
                     st.warning("No data found for current month.")
@@ -107,8 +134,13 @@ if st.button("🔄 Refresh Energy Data", type="primary"):
                 display_end_date = prev_end - datetime.timedelta(days=1)
                 st.caption(f"Period: {prev_start.strftime('%Y-%m-%d')} to {display_end_date.strftime('%Y-%m-%d')}")
                 if prev_results:
-                    total_prev = sum(r["Usage (kWh)"] for r in prev_results)
-                    st.metric(label="Total Portfolio (Previous Month)", value=f"{total_prev:,.2f} kWh")
+                    total_prev_kwh = sum(r["Usage (kWh)"] for r in prev_results)
+                    total_prev_cost = sum(r["Estimated Cost ($)"] for r in prev_results)
+                    
+                    col1, col2 = st.columns(2)
+                    col1.metric(label="Total Portfolio Usage", value=f"{total_prev_kwh:,.2f} kWh")
+                    col2.metric(label="Total Portfolio Cost", value=f"${total_prev_cost:,.2f}")
+                    
                     st.dataframe(prev_results, use_container_width=True)
                 else:
                     st.warning("No data found for previous month.")

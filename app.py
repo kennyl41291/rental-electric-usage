@@ -3,10 +3,36 @@ from pyemvue import PyEmVue
 from pyemvue.enums import Scale, Unit
 import datetime
 
-st.set_page_config(page_title="Emporia Energy Dashboard", page_icon="⚡", layout="centered")
+# Configure page layout for responsiveness
+st.set_page_config(
+    page_title="Emporia Energy Dashboard", 
+    page_icon="⚡", 
+    layout="centered",
+    initial_sidebar_state="collapsed"
+)
 
-st.title("⚡ Emporia Energy Dashboard")
-st.write("Live electricity consumption report and cost breakdown for your properties.")
+# Mobile-first CSS tweaks for clean spacing and readability on phones
+st.markdown("""
+    <style>
+    /* Make metric cards stack and fit mobile screens nicely */
+    [data-testid="stMetricValue"] {
+        font-size: 1.5rem !important;
+    }
+    /* Ensure tables scale within mobile viewports */
+    [data-testid="stDataFrame"] {
+        width: 100% !important;
+    }
+    /* Reduce top padding for a tighter mobile view */
+    .block-container {
+        padding-top: 2rem;
+        padding-left: 1rem;
+        padding-right: 1rem;
+    }
+    </style>
+""", unsafe_allow_html=True)
+
+st.title("⚡ Emporia Dashboard")
+st.write("Live electricity consumption and cost breakdown.")
 
 # Hardcoded credentials
 USERNAME = "kennyl41291@gmail.com"
@@ -16,8 +42,9 @@ PASSWORD = "19585723a"
 def calculate_cost(kwh):
     return round((kwh * 0.44) + 30.0, 2)
 
-if st.button("🔄 Refresh Energy Data", type="primary"):
-    with st.spinner("Connecting to Emporia & calculating usage and costs..."):
+# Make the refresh button prominent and touch-friendly for mobile
+if st.button("🔄 Refresh Energy Data", type="primary", use_container_width=True):
+    with st.spinner("Fetching live energy data..."):
         try:
             vue = PyEmVue()
             vue.login(username=USERNAME, password=PASSWORD)
@@ -112,34 +139,33 @@ if st.button("🔄 Refresh Energy Data", type="primary"):
                     })
 
             # Organize UI into Tabs
-            tab1, tab2 = st.tabs([f"📅 Current MTD ({curr_month_name})", f"📅 Previous Month ({prev_month_name})"])
+            tab1, tab2 = st.tabs([f"📅 Current MTD", f"📅 Previous Month"])
 
             with tab1:
-                st.subheader(f"Current Month-to-Date: {curr_month_name}")
-                st.caption(f"Period: {curr_start.strftime('%Y-%m-%d')} to {curr_end.strftime('%Y-%m-%d')}")
+                st.subheader(f"{curr_month_name}")
+                st.caption(f"Period: {curr_start.strftime('%m/%d/%Y')} - {curr_end.strftime('%m/%d/%Y')}")
                 if curr_results:
                     total_curr_kwh = sum(r["Usage (kWh)"] for r in curr_results)
                     total_curr_cost = sum(r["Estimated Cost ($)"] for r in curr_results)
                     
-                    col1, col2 = st.columns(2)
-                    col1.metric(label="Total Portfolio Usage", value=f"{total_curr_kwh:,.2f} kWh")
-                    col2.metric(label="Total Portfolio Cost", value=f"${total_curr_cost:,.2f}")
+                    # Metrics stack vertically on mobile screens automatically
+                    st.metric(label="Total Portfolio Usage", value=f"{total_curr_kwh:,.2f} kWh")
+                    st.metric(label="Total Portfolio Cost", value=f"${total_curr_cost:,.2f}")
                     
                     st.dataframe(curr_results, use_container_width=True)
                 else:
                     st.warning("No data found for current month.")
 
             with tab2:
-                st.subheader(f"Previous Full Month: {prev_month_name}")
+                st.subheader(f"{prev_month_name}")
                 display_end_date = prev_end - datetime.timedelta(days=1)
-                st.caption(f"Period: {prev_start.strftime('%Y-%m-%d')} to {display_end_date.strftime('%Y-%m-%d')}")
+                st.caption(f"Period: {prev_start.strftime('%m/%d/%Y')} - {display_end_date.strftime('%m/%d/%Y')}")
                 if prev_results:
                     total_prev_kwh = sum(r["Usage (kWh)"] for r in prev_results)
                     total_prev_cost = sum(r["Estimated Cost ($)"] for r in prev_results)
                     
-                    col1, col2 = st.columns(2)
-                    col1.metric(label="Total Portfolio Usage", value=f"{total_prev_kwh:,.2f} kWh")
-                    col2.metric(label="Total Portfolio Cost", value=f"${total_prev_cost:,.2f}")
+                    st.metric(label="Total Portfolio Usage", value=f"{total_prev_kwh:,.2f} kWh")
+                    st.metric(label="Total Portfolio Cost", value=f"${total_prev_cost:,.2f}")
                     
                     st.dataframe(prev_results, use_container_width=True)
                 else:

@@ -2,6 +2,7 @@ import streamlit as st
 from pyemvue import PyEmVue
 from pyemvue.enums import Scale, Unit
 import datetime
+import pandas as pd
 
 # Configure page layout for responsiveness
 st.set_page_config(
@@ -23,7 +24,8 @@ st.markdown("""
         padding-right: 1rem;
     }
     table {
-        font-size: 14px !important;
+        font-size: 13px !important;
+        width: 100% !important;
     }
     </style>
 """, unsafe_allow_html=True)
@@ -37,7 +39,7 @@ PASSWORD = "19585723a"
 
 # Cost calculation function: (usage * $0.44) + $30
 def calculate_cost(kwh):
-    return round((kwh * 0.44) + 30.0, 2)
+    return (kwh * 0.44) + 30.0
 
 if st.button("🔄 Refresh Energy Data", type="primary", use_container_width=True):
     with st.spinner("Fetching live energy data..."):
@@ -85,7 +87,7 @@ if st.button("🔄 Refresh Energy Data", type="primary", use_container_width=Tru
                     break
 
             # Fetch data for Current Month
-            curr_results = []
+            curr_raw_data = []
             for item in devices_map:
                 try:
                     usage_list, _ = vue.get_chart_usage(
@@ -95,22 +97,22 @@ if st.button("🔄 Refresh Energy Data", type="primary", use_container_width=Tru
                         scale=Scale.DAY.value,
                         unit=Unit.KWH.value
                     )
-                    total_usage = round(sum(v for v in usage_list if v is not None) if usage_list else 0.0, 2)
+                    total_usage = sum(v for v in usage_list if v is not None) if usage_list else 0.0
                     est_cost = calculate_cost(total_usage)
-                    curr_results.append({
+                    curr_raw_data.append({
                         "Property / Device": item["name"], 
-                        "Usage (kWh)": total_usage, 
-                        "Estimated Cost ($)": est_cost
+                        "Usage (kWh)": round(total_usage, 2), 
+                        "Estimated Cost ($)": round(est_cost, 2)
                     })
                 except Exception:
-                    curr_results.append({
+                    curr_raw_data.append({
                         "Property / Device": item["name"], 
                         "Usage (kWh)": 0.0, 
                         "Estimated Cost ($)": 30.0
                     })
 
             # Fetch data for Previous Month
-            prev_results = []
+            prev_raw_data = []
             for item in devices_map:
                 try:
                     usage_list, _ = vue.get_chart_usage(
@@ -120,15 +122,15 @@ if st.button("🔄 Refresh Energy Data", type="primary", use_container_width=Tru
                         scale=Scale.DAY.value,
                         unit=Unit.KWH.value
                     )
-                    total_usage = round(sum(v for v in usage_list if v is not None) if usage_list else 0.0, 2)
+                    total_usage = sum(v for v in usage_list if v is not None) if usage_list else 0.0
                     est_cost = calculate_cost(total_usage)
-                    prev_results.append({
+                    prev_raw_data.append({
                         "Property / Device": item["name"], 
-                        "Usage (kWh)": total_usage, 
-                        "Estimated Cost ($)": est_cost
+                        "Usage (kWh)": round(total_usage, 2), 
+                        "Estimated Cost ($)": round(est_cost, 2)
                     })
                 except Exception:
-                    prev_results.append({
+                    prev_raw_data.append({
                         "Property / Device": item["name"], 
                         "Usage (kWh)": 0.0, 
                         "Estimated Cost ($)": 30.0
@@ -140,15 +142,19 @@ if st.button("🔄 Refresh Energy Data", type="primary", use_container_width=Tru
             with tab1:
                 st.subheader(f"{curr_month_name}")
                 st.caption(f"Period: {curr_start.strftime('%m/%d/%Y')} - {curr_end.strftime('%m/%d/%Y')}")
-                if curr_results:
-                    total_curr_kwh = sum(r["Usage (kWh)"] for r in curr_results)
-                    total_curr_cost = sum(r["Estimated Cost ($)"] for r in curr_results)
+                if curr_raw_data:
+                    df_curr = pd.DataFrame(curr_raw_data)
+                    total_curr_kwh = df_curr["Usage (kWh)"].sum()
+                    total_curr_cost = df_curr["Estimated Cost ($)"].sum()
                     
                     st.metric(label="Total Portfolio Usage", value=f"{total_curr_kwh:,.2f} kWh")
                     st.metric(label="Total Portfolio Cost", value=f"${total_curr_cost:,.2f}")
                     
-                    # Using st.table instead of st.dataframe to prevent mobile horizontal cropping
-                    st.table(curr_results)
+                    # Format table cells cleanly with units and currency signs as strings
+                    df_curr["Usage (kWh)"] = df_curr["Usage (kWh)"].apply(lambda x: f"{x:,.2f}")
+                    df_curr["Estimated Cost ($)"] = df_curr["Estimated Cost ($)"].apply(lambda x: f"${x:,.2f}")
+                    
+                    st.table(df_curr[['Property / Device', 'Usage (kWh)', 'Estimated Cost ($)']])
                 else:
                     st.warning("No data found for current month.")
 
@@ -156,14 +162,19 @@ if st.button("🔄 Refresh Energy Data", type="primary", use_container_width=Tru
                 st.subheader(f"{prev_month_name}")
                 display_end_date = prev_end - datetime.timedelta(days=1)
                 st.caption(f"Period: {prev_start.strftime('%m/%d/%Y')} - {display_end_date.strftime('%m/%d/%Y')}")
-                if prev_results:
-                    total_prev_kwh = sum(r["Usage (kWh)"] for r in prev_results)
-                    total_prev_cost = sum(r["Estimated Cost ($)"] for r in prev_results)
+                if prev_raw_data:
+                    df_prev = pd.DataFrame(prev_raw_data)
+                    total_prev_kwh = df_prev["Usage (kWh)"].sum()
+                    total_prev_cost = df_prev["Estimated Cost ($)"].sum()
                     
                     st.metric(label="Total Portfolio Usage", value=f"{total_prev_kwh:,.2f} kWh")
                     st.metric(label="Total Portfolio Cost", value=f"${total_prev_cost:,.2f}")
                     
-                    st.table(prev_results)
+                    # Format table cells cleanly with units and currency signs as strings
+                    df_prev["Usage (kWh)"] = df_prev["Usage (kWh)"].apply(lambda x: f"{x:,.2f}")
+                    df_prev["Estimated Cost ($)"] = df_prev["Estimated Cost ($)"].apply(lambda x: f"${x:,.2f}")
+                    
+                    st.table(df_prev[['Property / Device', 'Usage (kWh)', 'Estimated Cost ($)']])
                 else:
                     st.warning("No data found for previous month.")
 

@@ -8,16 +8,15 @@ st.set_page_config(page_title="Emporia Energy Dashboard", page_icon="⚡", layou
 st.title("⚡ Emporia Energy - Current Month Dashboard")
 st.write("Live electricity consumption report for your properties.")
 
-# Sidebar credentials
-st.sidebar.header("Account Credentials")
-username = st.sidebar.text_input("Email", value="kennyl41291@gmail.com")
-password = st.sidebar.text_input("Password", type="password", value="19585723a")
+# Hardcoded credentials (hidden from the UI input form)
+USERNAME = "kennyl41291@gmail.com"
+PASSWORD = "19585723a"
 
 if st.button("🔄 Refresh Energy Data", type="primary"):
     with st.spinner("Connecting to Emporia & calculating usage..."):
         try:
             vue = PyEmVue()
-            vue.login(username=username, password=password)
+            vue.login(username=USERNAME, password=PASSWORD)
             devices = vue.get_devices()
 
             now = datetime.datetime.now(datetime.timezone.utc)

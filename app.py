@@ -11,18 +11,15 @@ st.set_page_config(
     initial_sidebar_state="collapsed"
 )
 
-# Mobile-first CSS tweaks for clean spacing and readability on phones
+# Mobile-first CSS tweaks
 st.markdown("""
     <style>
-    /* Make metric cards stack and fit mobile screens nicely */
     [data-testid="stMetricValue"] {
         font-size: 1.5rem !important;
     }
-    /* Ensure tables scale within mobile viewports */
     [data-testid="stDataFrame"] {
         width: 100% !important;
     }
-    /* Reduce top padding for a tighter mobile view */
     .block-container {
         padding-top: 2rem;
         padding-left: 1rem;
@@ -42,7 +39,6 @@ PASSWORD = "19585723a"
 def calculate_cost(kwh):
     return round((kwh * 0.44) + 30.0, 2)
 
-# Make the refresh button prominent and touch-friendly for mobile
 if st.button("🔄 Refresh Energy Data", type="primary", use_container_width=True):
     with st.spinner("Fetching live energy data..."):
         try:
@@ -88,7 +84,7 @@ if st.button("🔄 Refresh Energy Data", type="primary", use_container_width=Tru
                     processed_gids.add(gid)
                     break
 
-            # Fetch data for Current Month
+            # Fetch data for Current Month (Property -> Usage -> Estimated Cost as last column)
             curr_results = []
             for item in devices_map:
                 try:
@@ -113,7 +109,7 @@ if st.button("🔄 Refresh Energy Data", type="primary", use_container_width=Tru
                         "Estimated Cost ($)": 30.0
                     })
 
-            # Fetch data for Previous Month
+            # Fetch data for Previous Month (Property -> Usage -> Estimated Cost as last column)
             prev_results = []
             for item in devices_map:
                 try:
@@ -148,7 +144,6 @@ if st.button("🔄 Refresh Energy Data", type="primary", use_container_width=Tru
                     total_curr_kwh = sum(r["Usage (kWh)"] for r in curr_results)
                     total_curr_cost = sum(r["Estimated Cost ($)"] for r in curr_results)
                     
-                    # Metrics stack vertically on mobile screens automatically
                     st.metric(label="Total Portfolio Usage", value=f"{total_curr_kwh:,.2f} kWh")
                     st.metric(label="Total Portfolio Cost", value=f"${total_curr_cost:,.2f}")
                     

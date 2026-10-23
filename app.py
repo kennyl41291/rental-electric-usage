@@ -170,7 +170,7 @@ else:
                 cost = row.get("Estimated Cost ($)", 0.0)
                 usage = row.get("Usage (kWh)", 0.0)
                 if phone and phone != "nan" and phone != "":
-                    msg = f"Hola {tenant_name}, tu uso actual de luz (MTD) es ${cost:.2f} ({usage} kWh)."
+                    msg = f"Hola {tenant_name}, tu uso actual de luz este mes es de ${cost:.2f}."
                     sms_url = f"sms:{phone}?body={urllib.parse.quote(msg)}"
                     st.markdown(f"🔹 **{tenant_name}** (${cost:.2f}) → [💬 Send SMS Text]({sms_url})")
             st.markdown("---")

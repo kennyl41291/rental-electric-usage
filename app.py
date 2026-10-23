@@ -1,7 +1,9 @@
 import datetime
 import os
 import json
+import math
 import urllib.parse
+import zoneinfo
 import streamlit as st
 import pandas as pd
 from pyemvue import PyEmVue
@@ -38,7 +40,8 @@ def save_tenants(df):
     df.to_json(TENANT_FILE, orient="records", indent=4)
 
 def calculate_cost(kwh):
-    return (kwh * 0.44) + 30.0
+    raw_cost = (kwh * 0.44) + 30.0
+    return math.ceil(raw_cost)  # Rounds up to the nearest whole dollar
 
 @st.cache_data(ttl=600)
 def fetch_emporia_data(username, password):
@@ -46,18 +49,20 @@ def fetch_emporia_data(username, password):
     vue.login(username=username, password=password)
     devices = vue.get_devices()
 
-    now = datetime.datetime.now(datetime.timezone.utc)
+    # Use EST Timezone
+    est_tz = zoneinfo.ZoneInfo("America/New_York")
+    now = datetime.datetime.now(est_tz)
     
-    # Previous Month Range
+    # Previous Month Range (EST)
     if now.month == 1:
-        prev_start = datetime.datetime(now.year - 1, 12, 1, 0, 0, 0, tzinfo=datetime.timezone.utc)
-        prev_end = datetime.datetime(now.year, 1, 1, 0, 0, 0, tzinfo=datetime.timezone.utc)
+        prev_start = datetime.datetime(now.year - 1, 12, 1, 0, 0, 0, tzinfo=est_tz)
+        prev_end = datetime.datetime(now.year, 1, 1, 0, 0, 0, tzinfo=est_tz)
     else:
-        prev_start = datetime.datetime(now.year, now.month - 1, 1, 0, 0, 0, tzinfo=datetime.timezone.utc)
-        prev_end = datetime.datetime(now.year, now.month, 1, 0, 0, 0, tzinfo=datetime.timezone.utc)
+        prev_start = datetime.datetime(now.year, now.month - 1, 1, 0, 0, 0, tzinfo=est_tz)
+        prev_end = datetime.datetime(now.year, now.month, 1, 0, 0, 0, tzinfo=est_tz)
 
-    # Current Month Range
-    curr_start = datetime.datetime(now.year, now.month, 1, 0, 0, 0, tzinfo=datetime.timezone.utc)
+    # Current Month Range (EST MTD)
+    curr_start = datetime.datetime(now.year, now.month, 1, 0, 0, 0, tzinfo=est_tz)
     curr_end = now
 
     processed_gids = set()
@@ -90,7 +95,7 @@ def fetch_emporia_data(username, password):
             tot_prev = sum(v for v in usage_prev if v is not None) if usage_prev else 0.0
         except Exception:
             tot_prev = 0.0
-        prev_data.append({"Device Name": dev_name, "Usage (kWh)": round(tot_prev, 2), "Estimated Cost ($)": round(calculate_cost(tot_prev), 2)})
+        prev_data.append({"Device Name": dev_name, "Usage (kWh)": round(tot_prev, 2), "Estimated Cost ($)": calculate_cost(tot_prev)})
 
         # Fetch Current Month (MTD)
         try:
@@ -98,7 +103,7 @@ def fetch_emporia_data(username, password):
             tot_curr = sum(v for v in usage_curr if v is not None) if usage_curr else 0.0
         except Exception:
             tot_curr = 0.0
-        curr_data.append({"Device Name": dev_name, "Usage (kWh)": round(tot_curr, 2), "Estimated Cost ($)": round(calculate_cost(tot_curr), 2)})
+        curr_data.append({"Device Name": dev_name, "Usage (kWh)": round(tot_curr, 2), "Estimated Cost ($)": calculate_cost(tot_curr)})
 
     prev_month_label = prev_start.strftime('%B %Y')
     curr_month_label = f"{curr_start.strftime('%B %Y')} (MTD)"
@@ -160,48 +165,6 @@ else:
             st.subheader(f"Month-to-Date Usage & Cost for {st.session_state.curr_label}")
             col1, col2 = st.columns(2)
             col1.metric("MTD Usage (kWh)", f"{df_curr['Usage (kWh)'].sum():,.2f} kWh")
-            col2.metric("MTD Estimated Cost", f"${df_curr['Estimated Cost ($)'].sum():,.2f}")
+            col2.metric("MTD Estimated Cost", f"${df_curr['Estimated Cost ($)'].sum():,.0f}")
             
-            # --- Quick-Text Panel for Mobile ---
-            st.markdown("### 📱 Quick-Text Tenants (Current Month)")
-            for _, row in df_curr.iterrows():
-                phone = str(row.get("Phone", "")).strip()
-                tenant_name = row.get("Tenant", "Tenant")
-                cost = row.get("Estimated Cost ($)", 0.0)
-                usage = row.get("Usage (kWh)", 0.0)
-                if phone and phone != "nan" and phone != "":
-                    msg = f"Hola {tenant_name}, tu uso actual de luz este mes es de ${cost:.2f}."
-                    sms_url = f"sms:{phone}?body={urllib.parse.quote(msg)}"
-                    st.markdown(f"🔹 **{tenant_name}** (${cost:.2f}) → [💬 Send SMS Text]({sms_url})")
-            st.markdown("---")
-
-            st.dataframe(
-                df_curr,
-                use_container_width=True,
-                hide_index=True
-            )
-
-        with tab2:
-            st.subheader(f"Usage & Cost Breakdown for {st.session_state.prev_label}")
-            col1, col2 = st.columns(2)
-            col1.metric("Total Usage (kWh)", f"{df_prev['Usage (kWh)'].sum():,.2f} kWh")
-            col2.metric("Total Estimated Cost", f"${df_prev['Estimated Cost ($)'].sum():,.2f}")
-            
-            # --- Quick-Text Panel for Mobile ---
-            st.markdown("### 📱 Quick-Text Tenants (Previous Month)")
-            for _, row in df_prev.iterrows():
-                phone = str(row.get("Phone", "")).strip()
-                tenant_name = row.get("Tenant", "Tenant")
-                cost = row.get("Estimated Cost ($)", 0.0)
-                usage = row.get("Usage (kWh)", 0.0)
-                if phone and phone != "nan" and phone != "":
-                    msg = f"Hola {tenant_name}, tu factura de luz de {st.session_state.prev_label} es ${cost:.2f} ({usage} kWh). Gracias!"
-                    sms_url = f"sms:{phone}?body={urllib.parse.quote(msg)}"
-                    st.markdown(f"🔹 **{tenant_name}** (${cost:.2f}) → [💬 Send SMS Text]({sms_url})")
-            st.markdown("---")
-
-            st.dataframe(
-                df_prev,
-                use_container_width=True,
-                hide_index=True
-            )
+            # --- Quick-

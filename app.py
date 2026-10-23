@@ -22,10 +22,6 @@ st.markdown("""
         padding-left: 1rem;
         padding-right: 1rem;
     }
-    table {
-        font-size: 13px !important;
-        width: 100% !important;
-    }
     </style>
 """, unsafe_allow_html=True)
 
@@ -40,15 +36,31 @@ PASSWORD = "19585723a"
 def calculate_cost(kwh):
     return (kwh * 0.44) + 30.0
 
-# Tenant Information Database
-TENANT_DIRECTORY = {
-    "1631 74th St Basement Rear": {"name": "Shaheer", "phone": "2022904910"},
-    "1563 70th St Basement Front": {"name": "Francisco", "phone": "9295498478"},
-    "1563 70th St 1F": {"name": "Marcos", "phone": "9179821594"},
-    "6628 Wallaston 1F": {"name": "Edwin", "phone": "9297052008"},
-    "1563 70th st 1Rear": {"name": "Angel", "phone": "2016405388"},
-    "1563 70th st Basement Rear": {"name": "N/A", "phone": ""}
-}
+# --- EDITABLE TENANT DIRECTORY MANAGER ---
+st.sidebar.header("📝 Manage Tenants")
+st.sidebar.caption("Update names or phone numbers directly here without touching code.")
+
+# Initial default tenant mapping table
+default_tenants = pd.DataFrame([
+    {"Device Name": "1631 74th St Basement Rear", "Tenant": "Shaheer", "Phone": "2022904910"},
+    {"Device Name": "1563 70th St Basement Front", "Tenant": "Francisco", "Phone": "9295498478"},
+    {"Device Name": "1563 70th St 1F", "Tenant": "Marcos", "Phone": "9179821594"},
+    {"Device Name": "6628 Wallaston 1F", "Tenant": "Edwin", "Phone": "9297052008"},
+    {"Device Name": "1563 70th st 1Rear", "Tenant": "Angel", "Phone": "2016405388"},
+    {"Device Name": "1563 70th st Basement Rear", "Tenant": "N/A", "Phone": ""}
+])
+
+# st.data_editor makes the table interactive right inside the browser sidebar
+edited_tenants_df = st.sidebar.data_editor(default_tenants, hide_index=True, num_rows="dynamic")
+
+# Convert the edited table into a quick lookup dictionary for the app
+TENANT_DIRECTORY = {}
+for _, row in edited_tenants_df.iterrows():
+    TENANT_DIRECTORY[row["Device Name"]] = {
+        "name": row["Tenant"],
+        "phone": str(row["Phone"]).strip()
+    }
+
 
 if st.button("🔄 Refresh Energy Data", type="primary", use_container_width=True):
     with st.spinner("Fetching live energy data..."):

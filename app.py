@@ -89,8 +89,20 @@ def calculate_cost(kwh):
 @st.cache_data(ttl=600)
 def fetch_emporia_data(username, password):
     vue = PyEmVue()
-    vue.login(username=username, password=password)
-    devices = vue.get_devices()
+    try:
+        success = vue.login(username=username, password=password)
+        if not success:
+            st.error("⚠️ Emporia login returned False. AWS Cognito may be blocking Streamlit's cloud IP network.")
+            return None, None, None, None
+    except Exception as e:
+        st.error(f"⚠️ Emporia Authentication Exception: {e}")
+        return None, None, None, None
+
+    try:
+        devices = vue.get_devices()
+    except Exception as e:
+        st.error(f"⚠️ Error retrieving devices from Emporia API: {e}")
+        return None, None, None, None
 
     est_tz = zoneinfo.ZoneInfo("America/New_York")
     now = datetime.datetime.now(est_tz)
@@ -171,27 +183,33 @@ if not USERNAME or not PASSWORD:
 else:
     if "df_curr" not in st.session_state:
         try:
-            df_prev, df_curr, prev_label, curr_label = fetch_emporia_data(USERNAME, PASSWORD)
-            st.session_state.df_prev = df_prev
-            st.session_state.df_curr = df_curr
-            st.session_state.prev_label = prev_label
-            st.session_state.curr_label = curr_label
+            res = fetch_emporia_data(USERNAME, PASSWORD)
+            if res[0] is not None:
+                df_prev, df_curr, prev_label, curr_label = res
+                st.session_state.df_prev = df_prev
+                st.session_state.df_curr = df_curr
+                st.session_state.prev_label = prev_label
+                st.session_state.curr_label = curr_label
         except Exception as e:
             st.error(f"Failed to fetch Emporia data automatically: {e}")
 
     if st.button("🔄 Refresh Energy Data", type="primary"):
         with st.spinner("Connecting to Emporia..."):
             try:
-                df_prev, df_curr, prev_label, curr_label = fetch_emporia_data(USERNAME, PASSWORD)
-                st.session_state.df_prev = df_prev
-                st.session_state.df_curr = df_curr
-                st.session_state.prev_label = prev_label
-                st.session_state.curr_label = curr_label
-                st.success("Data refreshed successfully!")
+                res = fetch_emporia_data(USERNAME, PASSWORD)
+                if res[0] is not None:
+                    df_prev, df_curr, prev_label, curr_label = res
+                    st.session_state.df_prev = df_prev
+                    st.session_state.df_curr = df_curr
+                    st.session_state.prev_label = prev_label
+                    st.session_state.curr_label = curr_label
+                    st.success("Data refreshed successfully!")
+                else:
+                    st.warning("Could not refresh live data feed due to API constraints.")
             except Exception as e:
                 st.error(f"Failed to fetch Emporia data: {e}")
 
-    if "df_curr" in st.session_state:
+    if "df_curr" in st.session_state and st.session_state.df_curr is not None:
         df_prev = pd.merge(edited_tenant_df, st.session_state.df_prev, on="Device Name", how="left")
         df_curr = pd.merge(edited_tenant_df, st.session_state.df_curr, on="Device Name", how="left")
 
@@ -248,3 +266,5 @@ else:
                     "Estimated Cost ($)": st.column_config.NumberColumn(format="$%d")
                 }
             )
+    else:
+        st.info("💡 **Tenant Directory & GitHub Sync Active**: Your sidebar tenant configuration tools are fully functional. Live Emporia metrics are temporarily restricted by AWS Cognito from this cloud host network.")

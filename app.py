@@ -26,6 +26,7 @@ DEFAULT_TENANTS = [
 def calculate_cost(kwh):
     return (kwh * 0.44) + 30.0
 
+@st.cache_data(ttl=600)
 def fetch_emporia_data(username, password):
     vue = PyEmVue()
     vue.login(username=username, password=password)
@@ -107,7 +108,18 @@ st.title("⚡ Emporia Energy Usage Dashboard")
 if not USERNAME or not PASSWORD:
     st.error("Please configure EMPORIA_USERNAME and EMPORIA_PASSWORD environment variables or secrets.")
 else:
-    if st.button("🔄 Fetch Latest Energy Data", type="primary"):
+    # Automatically fetch data on initial load if not already in session state
+    if "df_curr" not in st.session_state:
+        try:
+            df_prev, df_curr, prev_label, curr_label = fetch_emporia_data(USERNAME, PASSWORD)
+            st.session_state.df_prev = df_prev
+            st.session_state.df_curr = df_curr
+            st.session_state.prev_label = prev_label
+            st.session_state.curr_label = curr_label
+        except Exception as e:
+            st.error(f"Failed to fetch Emporia data automatically: {e}")
+
+    if st.button("🔄 Refresh Energy Data", type="primary"):
         with st.spinner("Connecting to Emporia..."):
             try:
                 df_prev, df_curr, prev_label, curr_label = fetch_emporia_data(USERNAME, PASSWORD)
@@ -115,26 +127,13 @@ else:
                 st.session_state.df_curr = df_curr
                 st.session_state.prev_label = prev_label
                 st.session_state.curr_label = curr_label
+                st.success("Data refreshed successfully!")
             except Exception as e:
                 st.error(f"Failed to fetch Emporia data: {e}")
 
-    if "df_prev" in st.session_state:
+    if "df_curr" in st.session_state:
         df_prev = pd.merge(edited_tenant_df, st.session_state.df_prev, on="Device Name", how="left")
         df_curr = pd.merge(edited_tenant_df, st.session_state.df_curr, on="Device Name", how="left")
-
-        # Build SMS Link Column for Previous Month
-        sms_prev_links = []
-        for _, row in df_prev.iterrows():
-            phone = str(row.get("Phone", "")).strip()
-            tenant_name = row.get("Tenant", "Tenant")
-            cost = row.get("Estimated Cost ($)", 0.0)
-            usage = row.get("Usage (kWh)", 0.0)
-            if phone and phone != "nan" and phone != "":
-                msg = f"Hola {tenant_name}, tu factura de luz de {st.session_state.prev_label} es ${cost:.2f} ({usage} kWh). Gracias!"
-                sms_prev_links.f-string if False else sms_prev_links.append(f"sms:{phone}?body={urllib.parse.quote(msg)}")
-            else:
-                sms_prev_links.append("")
-        df_prev["Text Link"] = sms_prev_links
 
         # Build SMS Link Column for Current Month MTD
         sms_curr_links = []
@@ -150,23 +149,24 @@ else:
                 sms_curr_links.append("")
         df_curr["Text Link"] = sms_curr_links
 
-        tab1, tab2 = st.tabs([f"📅 Previous Month: {st.session_state.prev_label}", f"📊 Current Month: {st.session_state.curr_label}"])
+        # Build SMS Link Column for Previous Month
+        sms_prev_links = []
+        for _, row in df_prev.iterrows():
+            phone = str(row.get("Phone", "")).strip()
+            tenant_name = row.get("Tenant", "Tenant")
+            cost = row.get("Estimated Cost ($)", 0.0)
+            usage = row.get("Usage (kWh)", 0.0)
+            if phone and phone != "nan" and phone != "":
+                msg = f"Hola {tenant_name}, tu factura de luz de {st.session_state.prev_label} es ${cost:.2f} ({usage} kWh). Gracias!"
+                sms_prev_links.append(f"sms:{phone}?body={urllib.parse.quote(msg)}")
+            else:
+                sms_prev_links.append("")
+        df_prev["Text Link"] = sms_prev_links
+
+        # Tabs: Current Month is listed FIRST so it opens by default
+        tab1, tab2 = st.tabs([f"📊 Current Month: {st.session_state.curr_label}", f"📅 Previous Month: {st.session_state.prev_label}"])
 
         with tab1:
-            st.subheader(f"Usage & Cost Breakdown for {st.session_state.prev_label}")
-            col1, col2 = st.columns(2)
-            col1.metric("Total Usage (kWh)", f"{df_prev['Usage (kWh)'].sum():,.2f} kWh")
-            col2.metric("Total Estimated Cost", f"${df_prev['Estimated Cost ($)'].sum():,.2f}")
-            
-            st.dataframe(
-                df_prev,
-                use_container_width=True,
-                column_config={
-                    "Text Link": st.column_config.LinkColumn("Text Tenant", display_text="💬 Text")
-                }
-            )
-
-        with tab2:
             st.subheader(f"Month-to-Date Usage & Cost for {st.session_state.curr_label}")
             col1, col2 = st.columns(2)
             col1.metric("MTD Usage (kWh)", f"{df_curr['Usage (kWh)'].sum():,.2f} kWh")
@@ -174,6 +174,20 @@ else:
             
             st.dataframe(
                 df_curr,
+                use_container_width=True,
+                column_config={
+                    "Text Link": st.column_config.LinkColumn("Text Tenant", display_text="💬 Text")
+                }
+            )
+
+        with tab2:
+            st.subheader(f"Usage & Cost Breakdown for {st.session_state.prev_label}")
+            col1, col2 = st.columns(2)
+            col1.metric("Total Usage (kWh)", f"{df_prev['Usage (kWh)'].sum():,.2f} kWh")
+            col2.metric("Total Estimated Cost", f"${df_prev['Estimated Cost ($)'].sum():,.2f}")
+            
+            st.dataframe(
+                df_prev,
                 use_container_width=True,
                 column_config={
                     "Text Link": st.column_config.LinkColumn("Text Tenant", display_text="💬 Text")

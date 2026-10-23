@@ -8,7 +8,6 @@ USERNAME = os.environ.get("EMPORIA_USERNAME")
 PASSWORD = os.environ.get("EMPORIA_PASSWORD")
 GOOGLE_SCRIPT_URL = os.environ.get("GOOGLE_SCRIPT_URL")
 
-# Tenant directory configuration
 TENANTS = [
     {"Device Name": "1631 74th St Basement Rear", "Tenant": "Shaheer", "Phone": "2022904910"},
     {"Device Name": "1563 70th St Basement Front", "Tenant": "Francisco", "Phone": "9295498478"},
@@ -34,7 +33,6 @@ def main():
 
     now = datetime.datetime.now(datetime.timezone.utc)
     
-    # Calculate previous full month range
     if now.month == 1:
         prev_start = datetime.datetime(now.year - 1, 12, 1, 0, 0, 0, tzinfo=datetime.timezone.utc)
         prev_end = datetime.datetime(now.year, 1, 1, 0, 0, 0, tzinfo=datetime.timezone.utc)
@@ -105,9 +103,12 @@ def main():
             r["Estimated Cost ($)"]
         ])
 
+    # Explicitly set headers for Google Apps Script Web App
+    headers = {'Content-Type': 'application/json'}
     response = requests.post(
         GOOGLE_SCRIPT_URL,
-        json={"rows": rows_to_send}
+        json={"rows": rows_to_send},
+        headers=headers
     )
     print(f"Response status: {response.status_code}, body: {response.text}")
 

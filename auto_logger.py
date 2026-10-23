@@ -1,5 +1,7 @@
 import datetime
 import os
+import json
+import math
 import requests
 from pyemvue import PyEmVue
 from pyemvue.enums import Scale, Unit
@@ -8,7 +10,9 @@ USERNAME = os.environ.get("EMPORIA_USERNAME")
 PASSWORD = os.environ.get("EMPORIA_PASSWORD")
 GOOGLE_SCRIPT_URL = os.environ.get("GOOGLE_SCRIPT_URL")
 
-TENANTS = [
+TENANT_FILE = "tenants.json"
+
+DEFAULT_TENANTS = [
     {"Device Name": "1631 74th St Basement Rear", "Tenant": "Shaheer", "Phone": "2022904910"},
     {"Device Name": "1563 70th St Basement Front", "Tenant": "Francisco", "Phone": "9295498478"},
     {"Device Name": "1563 70th St 1F", "Tenant": "Marcos", "Phone": "9179821594"},
@@ -17,15 +21,26 @@ TENANTS = [
     {"Device Name": "1563 70th st Basement Rear", "Tenant": "N/A", "Phone": ""}
 ]
 
-TENANT_DIRECTORY = {t["Device Name"]: t for t in TENANTS}
+def load_tenant_directory():
+    if os.path.exists(TENANT_FILE):
+        try:
+            with open(TENANT_FILE, "r", encoding="utf-8") as f:
+                data = json.load(f)
+                return {t["Device Name"]: t for t in data}
+        except Exception as e:
+            print(f"Error loading {TENANT_FILE}: {e}")
+    return {t["Device Name"]: t for t in DEFAULT_TENANTS}
 
 def calculate_cost(kwh):
-    return (kwh * 0.44) + 30.0
+    raw_cost = (kwh * 0.44) + 30.0
+    return math.ceil(raw_cost)  # Matches your whole-dollar rounding rule
 
 def main():
     if not USERNAME or not PASSWORD or not GOOGLE_SCRIPT_URL:
         print("Missing environment variables.")
         return
+
+    TENANT_DIRECTORY = load_tenant_directory()
 
     vue = PyEmVue()
     vue.login(username=USERNAME, password=PASSWORD)
@@ -76,16 +91,16 @@ def main():
             est_cost = calculate_cost(total_usage)
             prev_raw_data.append({
                 "Device Name": dev_name,
-                "Tenant": t_info["Tenant"],
-                "Phone": t_info["Phone"],
+                "Tenant": t_info.get("Tenant", "Unknown"),
+                "Phone": t_info.get("Phone", ""),
                 "Usage (kWh)": round(total_usage, 2),
-                "Estimated Cost ($)": round(est_cost, 2)
+                "Estimated Cost ($)": est_cost
             })
         except Exception:
             prev_raw_data.append({
                 "Device Name": dev_name,
-                "Tenant": t_info["Tenant"],
-                "Phone": t_info["Phone"],
+                "Tenant": t_info.get("Tenant", "Unknown"),
+                "Phone": t_info.get("Phone", ""),
                 "Usage (kWh)": 0.0,
                 "Estimated Cost ($)": 30.0
             })
@@ -103,7 +118,6 @@ def main():
             r["Estimated Cost ($)"]
         ])
 
-    # Explicitly set headers for Google Apps Script Web App
     headers = {'Content-Type': 'application/json'}
     response = requests.post(
         GOOGLE_SCRIPT_URL,

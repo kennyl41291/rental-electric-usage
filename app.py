@@ -167,4 +167,52 @@ else:
             col1.metric("MTD Usage (kWh)", f"{df_curr['Usage (kWh)'].sum():,.2f} kWh")
             col2.metric("MTD Estimated Cost", f"${df_curr['Estimated Cost ($)'].sum():,.0f}")
             
-            # --- Quick-
+            # --- Quick-Text Panel for Mobile ---
+            st.markdown("### 📱 Quick-Text Tenants (Current Month)")
+            for _, row in df_curr.iterrows():
+                phone = str(row.get("Phone", "")).strip()
+                tenant_name = row.get("Tenant", "Tenant")
+                cost = row.get("Estimated Cost ($)", 0)
+                usage = row.get("Usage (kWh)", 0.0)
+                if phone and phone != "nan" and phone != "":
+                    msg = f"Hola {tenant_name}, tu uso actual de luz (MTD) es ${cost} ({usage} kWh)."
+                    sms_url = f"sms:{phone}?body={urllib.parse.quote(msg)}"
+                    st.markdown(f"🔹 **{tenant_name}** (${cost}) → [💬 Send SMS Text]({sms_url})")
+            st.markdown("---")
+
+            st.dataframe(
+                df_curr,
+                use_container_width=True,
+                hide_index=True,
+                column_config={
+                    "Estimated Cost ($)": st.column_config.NumberColumn(format="$%d")
+                }
+            )
+
+        with tab2:
+            st.subheader(f"Usage & Cost Breakdown for {st.session_state.prev_label}")
+            col1, col2 = st.columns(2)
+            col1.metric("Total Usage (kWh)", f"{df_prev['Usage (kWh)'].sum():,.2f} kWh")
+            col2.metric("Total Estimated Cost", f"${df_prev['Estimated Cost ($)'].sum():,.0f}")
+            
+            # --- Quick-Text Panel for Mobile ---
+            st.markdown("### 📱 Quick-Text Tenants (Previous Month)")
+            for _, row in df_prev.iterrows():
+                phone = str(row.get("Phone", "")).strip()
+                tenant_name = row.get("Tenant", "Tenant")
+                cost = row.get("Estimated Cost ($)", 0)
+                usage = row.get("Usage (kWh)", 0.0)
+                if phone and phone != "nan" and phone != "":
+                    msg = f"Hola {tenant_name}, tu factura de luz de {st.session_state.prev_label} es ${cost} ({usage} kWh). Gracias!"
+                    sms_url = f"sms:{phone}?body={urllib.parse.quote(msg)}"
+                    st.markdown(f"🔹 **{tenant_name}** (${cost}) → [💬 Send SMS Text]({sms_url})")
+            st.markdown("---")
+
+            st.dataframe(
+                df_prev,
+                use_container_width=True,
+                hide_index=True,
+                column_config={
+                    "Estimated Cost ($)": st.column_config.NumberColumn(format="$%d")
+                }
+            )

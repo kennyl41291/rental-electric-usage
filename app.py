@@ -44,6 +44,8 @@ conn = st.connection("gsheets", type=GSheetsConnection)
 def load_tenant_directory():
     try:
         df = conn.read(worksheet="TenantDirectory", ttl="10s")
+        if df.empty or "Device Name" not in df.columns:
+            raise Exception("Empty or invalid format")
         return df.fillna("")
     except Exception:
         return pd.DataFrame([
@@ -206,10 +208,18 @@ if st.session_state.get("data_loaded", False):
         st.metric(label="Total Portfolio Usage", value=f"{df_curr['Usage (kWh)'].sum():,.2f} kWh")
         st.metric(label="Total Portfolio Cost", value=f"${df_curr['Estimated Cost ($)'].sum():,.2f}")
         
-        # --- RECORD TO GOOGLE SHEET BUTTON (Newest at Top) ---
+        # --- RECORD TO GOOGLE SHEET BUTTON (Safe Handling for Blank/Existing Data) ---
         if st.button("📝 Record Current Month to Google Sheet", use_container_width=True):
             try:
-                existing_history = conn.read(worksheet="BillingHistory", ttl="0s").fillna("")
+                try:
+                    existing_history = conn.read(worksheet="BillingHistory", ttl="0s")
+                    if existing_history is None or existing_history.empty:
+                        existing_history = pd.DataFrame(columns=["Timestamp", "Month/Year", "Device Name", "Tenant", "Phone", "Usage (kWh)", "Estimated Cost ($)"])
+                    else:
+                        existing_history = existing_history.fillna("")
+                except Exception:
+                    existing_history = pd.DataFrame(columns=["Timestamp", "Month/Year", "Device Name", "Tenant", "Phone", "Usage (kWh)", "Estimated Cost ($)"])
+
                 now_timestamp = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
                 new_records = []
                 for _, r in df_curr.iterrows():
@@ -223,8 +233,8 @@ if st.session_state.get("data_loaded", False):
                         "Estimated Cost ($)": r["Estimated Cost ($)"]
                     })
                 
-                # Place new records FIRST, pushing existing history down
-                updated_history = pd.concat([pd.DataFrame(new_records), existing_history], ignore_index=True)
+                new_df = pd.DataFrame(new_records)
+                updated_history = pd.concat([new_df, existing_history], ignore_index=True)
                 conn.update(worksheet="BillingHistory", data=updated_history)
                 st.success(f"Successfully recorded {len(new_records)} entries to the top of Google Sheet!")
             except Exception as ex:
@@ -266,10 +276,18 @@ if st.session_state.get("data_loaded", False):
         st.metric(label="Total Portfolio Usage", value=f"{df_prev['Usage (kWh)'].sum():,.2f} kWh")
         st.metric(label="Total Portfolio Cost", value=f"${df_prev['Estimated Cost ($)'].sum():,.2f}")
         
-        # --- RECORD PREVIOUS MONTH BUTTON (Newest at Top) ---
+        # --- RECORD PREVIOUS MONTH BUTTON (Safe Handling) ---
         if st.button("📝 Record Previous Month to Google Sheet", use_container_width=True):
             try:
-                existing_history = conn.read(worksheet="BillingHistory", ttl="0s").fillna("")
+                try:
+                    existing_history = conn.read(worksheet="BillingHistory", ttl="0s")
+                    if existing_history is None or existing_history.empty:
+                        existing_history = pd.DataFrame(columns=["Timestamp", "Month/Year", "Device Name", "Tenant", "Phone", "Usage (kWh)", "Estimated Cost ($)"])
+                    else:
+                        existing_history = existing_history.fillna("")
+                except Exception:
+                    existing_history = pd.DataFrame(columns=["Timestamp", "Month/Year", "Device Name", "Tenant", "Phone", "Usage (kWh)", "Estimated Cost ($)"])
+
                 now_timestamp = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
                 new_records = []
                 for _, r in df_prev.iterrows():
@@ -283,8 +301,8 @@ if st.session_state.get("data_loaded", False):
                         "Estimated Cost ($)": r["Estimated Cost ($)"]
                     })
                 
-                # Place new records FIRST, pushing existing history down
-                updated_history = pd.concat([pd.DataFrame(new_records), existing_history], ignore_index=True)
+                new_df = pd.DataFrame(new_records)
+                updated_history = pd.concat([new_df, existing_history], ignore_index=True)
                 conn.update(worksheet="BillingHistory", data=updated_history)
                 st.success(f"Successfully recorded {len(new_records)} entries to the top of Google Sheet!")
             except Exception as ex:

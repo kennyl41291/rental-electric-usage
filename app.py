@@ -48,7 +48,7 @@ def load_tenants():
     return pd.DataFrame(DEFAULT_TENANTS)
 
 def save_tenants(df):
-    """Pushes tenant updates from the dashboard straight to GitHub, creating or updating the file."""
+    """Pushes tenant updates straight to GitHub, robustly handling file creation or updates."""
     if not GITHUB_TOKEN or not GITHUB_REPO:
         st.error("GitHub credentials missing in secrets!")
         return
@@ -57,12 +57,13 @@ def save_tenants(df):
     url = f"https://api.github.com/repos/{GITHUB_REPO}/contents/{TENANT_FILE}"
     
     try:
-        # Check if file exists to fetch its SHA
-        get_res = requests.get(url, headers=headers, timeout=10)
-        sha = get_res.json().get("sha") if get_res.status_code == 200 else None
-
         json_str = df.to_json(orient="records", indent=4)
         encoded_content = base64.b64encode(json_str.encode("utf-8")).decode("utf-8")
+
+        sha = None
+        get_res = requests.get(url, headers=headers, timeout=5)
+        if get_res.status_code == 200:
+            sha = get_res.json().get("sha")
 
         payload = {
             "message": "Update tenants via Streamlit Dashboard [skip ci]",
@@ -77,7 +78,11 @@ def save_tenants(df):
             st.sidebar.success("Saved & pushed to GitHub!")
             st.cache_data.clear()
         else:
-            st.sidebar.error(f"Failed to push to GitHub: {put_res.text}")
+            try:
+                err_msg = put_res.json().get('message', put_res.text)
+            except Exception:
+                err_msg = put_res.text
+            st.sidebar.error(f"GitHub Error ({put_res.status_code}): {err_msg}")
     except Exception as e:
         st.sidebar.error(f"Error saving to GitHub: {e}")
 

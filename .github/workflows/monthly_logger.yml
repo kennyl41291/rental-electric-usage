@@ -2,8 +2,8 @@ name: Monthly Energy Logger
 
 on:
   schedule:
-    - cron: '0 8 1 * *' # Runs automatically at 08:00 UTC on the 1st of every month
-  workflow_dispatch: # Allows you to manually trigger it anytime for testing
+    - cron: '0 8 1 * *'
+  workflow_dispatch:
 
 jobs:
   log-energy:

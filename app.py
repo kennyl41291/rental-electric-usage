@@ -60,7 +60,6 @@ def load_tenants():
         except Exception:
             return pd.DataFrame(DEFAULT_TENANTS)
     else:
-        # Save default file on first run
         save_tenants(pd.DataFrame(DEFAULT_TENANTS))
         return pd.DataFrame(DEFAULT_TENANTS)
 
@@ -74,18 +73,13 @@ def save_tenants(df):
 st.sidebar.header("📝 Manage Tenants")
 st.sidebar.caption("Update names or phone numbers directly here. Changes are saved automatically!")
 
-# Load stored tenant data
 current_tenants_df = load_tenants()
-
-# st.data_editor makes the table interactive in the browser
 edited_tenants_df = st.sidebar.data_editor(current_tenants_df, hide_index=True, num_rows="dynamic")
 
-# Save changes to tenants.json whenever the user edits the table
 if not edited_tenants_df.equals(current_tenants_df):
     save_tenants(edited_tenants_df)
     st.sidebar.success("Saved changes!")
 
-# Build lookup dictionary for device mapping
 TENANT_DIRECTORY = {}
 for _, row in edited_tenants_df.iterrows():
     TENANT_DIRECTORY[str(row["Device Name"])] = {
@@ -222,15 +216,18 @@ if st.button("🔄 Refresh Energy Data", type="primary", use_container_width=Tru
                         prop_name = row["Device Name"]
                         tenant_name = row["Tenant"]
                         phone_num = row["Phone"]
+                        usage = row["Usage (kWh)"]
                         cost = row["Estimated Cost ($)"]
                         
+                        # Text message contains bill amount only (no kWh usage)
                         msg = f"Hola! Su recibo de luz correspondiente a este mes es de ${cost:,.2f}."
                         encoded_msg = urllib.parse.quote(msg)
                         sms_link = f"sms:{phone_num}?body={encoded_msg}"
                         
                         col_info, col_btn = st.columns([2, 1])
                         with col_info:
-                            st.text(f"{prop_name}\nTenant: {tenant_name} ({phone_num})\nDue: ${cost:,.2f}")
+                            # Dashboard view shows both kWh and Cost breakdown
+                            st.text(f"{prop_name}\nTenant: {tenant_name} ({phone_num})\nUsage: {usage:,.2f} kWh | Due: ${cost:,.2f}")
                         with col_btn:
                             if phone_num and phone_num.lower() != "nan":
                                 st.markdown(
@@ -262,15 +259,18 @@ if st.button("🔄 Refresh Energy Data", type="primary", use_container_width=Tru
                         prop_name = row["Device Name"]
                         tenant_name = row["Tenant"]
                         phone_num = row["Phone"]
+                        usage = row["Usage (kWh)"]
                         cost = row["Estimated Cost ($)"]
                         
+                        # Text message contains bill amount only (no kWh usage)
                         msg = f"Hola! Su recibo de luz correspondiente al mes pasado es de ${cost:,.2f}."
                         encoded_msg = urllib.parse.quote(msg)
                         sms_link = f"sms:{phone_num}?body={encoded_msg}"
                         
                         col_info, col_btn = st.columns([2, 1])
                         with col_info:
-                            st.text(f"{prop_name}\nTenant: {tenant_name} ({phone_num})\nDue: ${cost:,.2f}")
+                            # Dashboard view shows both kWh and Cost breakdown
+                            st.text(f"{prop_name}\nTenant: {tenant_name} ({phone_num})\nUsage: {usage:,.2f} kWh | Due: ${cost:,.2f}")
                         with col_btn:
                             if phone_num and phone_num.lower() != "nan":
                                 st.markdown(

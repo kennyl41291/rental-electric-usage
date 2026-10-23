@@ -1,5 +1,6 @@
 import datetime
 import os
+import urllib.parse
 import streamlit as st
 import pandas as pd
 from pyemvue import PyEmVue
@@ -25,7 +26,6 @@ DEFAULT_TENANTS = [
 def calculate_cost(kwh):
     return (kwh * 0.44) + 30.0
 
-@st.cache_data(ttl=300)
 def fetch_emporia_data(username, password):
     vue = PyEmVue()
     vue.login(username=username, password=password)
@@ -107,29 +107,63 @@ st.title("⚡ Emporia Energy Usage Dashboard")
 if not USERNAME or not PASSWORD:
     st.error("Please configure EMPORIA_USERNAME and EMPORIA_PASSWORD environment variables or secrets.")
 else:
-    with st.spinner("Fetching energy data from Emporia..."):
-        try:
-            df_prev, df_curr, prev_label, curr_label = fetch_emporia_data(USERNAME, PASSWORD)
+    if st.button("🔄 Fetch Latest Energy Data", type="primary"):
+        with st.spinner("Connecting to Emporia..."):
+            try:
+                df_prev, df_curr, prev_label, curr_label = fetch_emporia_data(USERNAME, PASSWORD)
+                st.session_state.df_prev = df_prev
+                st.session_state.df_curr = df_curr
+                st.session_state.prev_label = prev_label
+                st.session_state.curr_label = curr_label
+            except Exception as e:
+                st.error(f"Failed to fetch Emporia data: {e}")
 
-            # Merge Tenant Data
-            df_prev = pd.merge(edited_tenant_df, df_prev, on="Device Name", how="left")
-            df_curr = pd.merge(edited_tenant_df, df_curr, on="Device Name", how="left")
+    if "df_prev" in st.session_state:
+        df_prev = pd.merge(edited_tenant_df, st.session_state.df_prev, on="Device Name", how="left")
+        df_curr = pd.merge(edited_tenant_df, st.session_state.df_curr, on="Device Name", how="left")
 
-            tab1, tab2 = st.tabs([f"📅 Previous Month: {prev_label}", f"📊 Current Month: {curr_label}"])
+        tab1, tab2 = st.tabs([f"📅 Previous Month: {st.session_state.prev_label}", f"📊 Current Month: {st.session_state.curr_label}"])
 
-            with tab1:
-                st.subheader(f"Usage & Cost Breakdown for {prev_label}")
-                col1, col2 = st.columns(2)
-                col1.metric("Total Usage (kWh)", f"{df_prev['Usage (kWh)'].sum():,.2f} kWh")
-                col2.metric("Total Estimated Cost", f"${df_prev['Estimated Cost ($)'].sum():,.2f}")
-                st.dataframe(df_prev, use_container_width=True)
+        with tab1:
+            st.subheader(f"Usage & Cost Breakdown for {st.session_state.prev_label}")
+            col1, col2 = st.columns(2)
+            col1.metric("Total Usage (kWh)", f"{df_prev['Usage (kWh)'].sum():,.2f} kWh")
+            col2.metric("Total Estimated Cost", f"${df_prev['Estimated Cost ($)'].sum():,.2f}")
+            
+            st.dataframe(df_prev, use_container_width=True)
 
-            with tab2:
-                st.subheader(f"Month-to-Date Usage & Cost for {curr_label}")
-                col1, col2 = st.columns(2)
-                col1.metric("MTD Usage (kWh)", f"{df_curr['Usage (kWh)'].sum():,.2f} kWh")
-                col2.metric("MTD Estimated Cost", f"${df_curr['Estimated Cost ($)'].sum():,.2f}")
-                st.dataframe(df_curr, use_container_width=True)
+            # Tenant Text Links Section
+            st.markdown("### 📱 Text Tenants (Previous Month)")
+            for _, row in df_prev.iterrows():
+                phone = str(row.get("Phone", "")).strip()
+                tenant_name = row.get("Tenant", "Tenant")
+                cost = row.get("Estimated Cost ($)", 0.0)
+                usage = row.get("Usage (kWh)", 0.0)
+                
+                if phone and phone != "nan" and phone != "":
+                    message = f"Hola {tenant_name}, tu factura de luz de {st.session_state.prev_label} es ${cost:.2f} ({usage} kWh). Gracias!"
+                    encoded_msg = urllib.parse.quote(message)
+                    sms_url = f"sms:{phone}?body={encoded_msg}"
+                    st.markdown(f"💬 **{tenant_name}** ({phone}) — [📲 Send SMS Text]({sms_url})")
 
-        except Exception as e:
-            st.error(f"Failed to fetch Emporia data: {e}")
+        with tab2:
+            st.subheader(f"Month-to-Date Usage & Cost for {st.session_state.curr_label}")
+            col1, col2 = st.columns(2)
+            col1.metric("MTD Usage (kWh)", f"{df_curr['Usage (kWh)'].sum():,.2f} kWh")
+            col2.metric("MTD Estimated Cost", f"${df_curr['Estimated Cost ($)'].sum():,.2f}")
+            
+            st.dataframe(df_curr, use_container_width=True)
+
+            # MTD Tenant Text Links Section
+            st.markdown("### 📱 Text Tenants (Current Month MTD)")
+            for _, row in df_curr.iterrows():
+                phone = str(row.get("Phone", "")).strip()
+                tenant_name = row.get("Tenant", "Tenant")
+                cost = row.get("Estimated Cost ($)", 0.0)
+                usage = row.get("Usage (kWh)", 0.0)
+                
+                if phone and phone != "nan" and phone != "":
+                    message = f"Hola {tenant_name}, tu uso actual de luz (MTD) es ${cost:.2f} ({usage} kWh)."
+                    encoded_msg = urllib.parse.quote(message)
+                    sms_url = f"sms:{phone}?body={encoded_msg}"
+                    st.markdown(f"💬 **{tenant_name}** ({phone}) — [📲 Send SMS Text]({sms_url})")

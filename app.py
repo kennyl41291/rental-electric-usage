@@ -4,7 +4,7 @@ from pyemvue.enums import Scale, Unit
 import datetime
 import pandas as pd
 import urllib.parse
-from streamlit_gsheets import GSheetsConnection
+import requests
 
 st.set_page_config(
     page_title="Emporia Energy Dashboard", 
@@ -37,39 +37,19 @@ PASSWORD = "19585723a"
 def calculate_cost(kwh):
     return (kwh * 0.44) + 30.0
 
-# Initialize Google Sheets connection
-conn = st.connection("gsheets", type=GSheetsConnection)
+# Fallback Tenant Directory if needed
+DEFAULT_TENANTS = [
+    {"Device Name": "1631 74th St Basement Rear", "Tenant": "Shaheer", "Phone": "2022904910"},
+    {"Device Name": "1563 70th St Basement Front", "Tenant": "Francisco", "Phone": "9295498478"},
+    {"Device Name": "1563 70th St 1F", "Tenant": "Marcos", "Phone": "9179821594"},
+    {"Device Name": "6628 Wallaston 1F", "Tenant": "Edwin", "Phone": "9297052008"},
+    {"Device Name": "1563 70th st 1Rear", "Tenant": "Angel", "Phone": "2016405388"},
+    {"Device Name": "1563 70th st Basement Rear", "Tenant": "N/A", "Phone": ""}
+]
 
-# Helper function to load Tenant Directory from Google Sheets
-def load_tenant_directory():
-    try:
-        df = conn.read(worksheet="TenantDirectory", ttl="10s")
-        if df.empty or "Device Name" not in df.columns:
-            raise Exception("Empty or invalid format")
-        return df.fillna("")
-    except Exception:
-        return pd.DataFrame([
-            {"Device Name": "1631 74th St Basement Rear", "Tenant": "Shaheer", "Phone": "2022904910"},
-            {"Device Name": "1563 70th St Basement Front", "Tenant": "Francisco", "Phone": "9295498478"},
-            {"Device Name": "1563 70th St 1F", "Tenant": "Marcos", "Phone": "9179821594"},
-            {"Device Name": "6628 Wallaston 1F", "Tenant": "Edwin", "Phone": "9297052008"},
-            {"Device Name": "1563 70th st 1Rear", "Tenant": "Angel", "Phone": "2016405388"},
-            {"Device Name": "1563 70th st Basement Rear", "Tenant": "N/A", "Phone": ""}
-        ])
-
-# --- SIDEBAR TENANT MANAGEMENT ---
+# Simple local state for tenant directory (or keep hardcoded dictionary for quick use)
 st.sidebar.header("📝 Manage Tenants")
-st.sidebar.caption("Modifying tenant information here syncs directly with Google Sheets.")
-
-current_tenants_df = load_tenant_directory()
-edited_tenants_df = st.sidebar.data_editor(current_tenants_df, hide_index=True, num_rows="dynamic")
-
-if not edited_tenants_df.equals(current_tenants_df):
-    try:
-        conn.update(worksheet="TenantDirectory", data=edited_tenants_df)
-        st.sidebar.success("Updated Google Sheet successfully!")
-    except Exception as e:
-        st.sidebar.error(f"Failed to update Sheet: {e}")
+edited_tenants_df = st.sidebar.data_editor(pd.DataFrame(DEFAULT_TENANTS), hide_index=True, num_rows="dynamic")
 
 TENANT_DIRECTORY = {}
 for _, row in edited_tenants_df.iterrows():
@@ -208,35 +188,31 @@ if st.session_state.get("data_loaded", False):
         st.metric(label="Total Portfolio Usage", value=f"{df_curr['Usage (kWh)'].sum():,.2f} kWh")
         st.metric(label="Total Portfolio Cost", value=f"${df_curr['Estimated Cost ($)'].sum():,.2f}")
         
-        # --- RECORD TO GOOGLE SHEET BUTTON (Safe Handling for Blank/Existing Data) ---
+        # --- RECORD TO GOOGLE SHEET VIA WEB APP ---
         if st.button("📝 Record Current Month to Google Sheet", use_container_width=True):
             try:
-                try:
-                    existing_history = conn.read(worksheet="BillingHistory", ttl="0s")
-                    if existing_history is None or existing_history.empty:
-                        existing_history = pd.DataFrame(columns=["Timestamp", "Month/Year", "Device Name", "Tenant", "Phone", "Usage (kWh)", "Estimated Cost ($)"])
-                    else:
-                        existing_history = existing_history.fillna("")
-                except Exception:
-                    existing_history = pd.DataFrame(columns=["Timestamp", "Month/Year", "Device Name", "Tenant", "Phone", "Usage (kWh)", "Estimated Cost ($)"])
-
                 now_timestamp = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-                new_records = []
+                rows_to_send = []
                 for _, r in df_curr.iterrows():
-                    new_records.append({
-                        "Timestamp": now_timestamp,
-                        "Month/Year": curr_month_name,
-                        "Device Name": r["Device Name"],
-                        "Tenant": r["Tenant"],
-                        "Phone": r["Phone"],
-                        "Usage (kWh)": r["Usage (kWh)"],
-                        "Estimated Cost ($)": r["Estimated Cost ($)"]
-                    })
+                    rows_to_send.append([
+                        now_timestamp,
+                        curr_month_name,
+                        r["Device Name"],
+                        r["Tenant"],
+                        str(r["Phone"]),
+                        r["Usage (kWh)"],
+                        r["Estimated Cost ($)"]
+                    ])
                 
-                new_df = pd.DataFrame(new_records)
-                updated_history = pd.concat([new_df, existing_history], ignore_index=True)
-                conn.update(worksheet="BillingHistory", data=updated_history)
-                st.success(f"Successfully recorded {len(new_records)} entries to the top of Google Sheet!")
+                response = requests.post(
+                    st.secrets["GOOGLE_SCRIPT_URL"],
+                    json={"rows": rows_to_send}
+                )
+                
+                if response.status_code == 200:
+                    st.success("Successfully recorded to the top of Google Sheet!")
+                else:
+                    st.error(f"Server returned status {response.status_code}")
             except Exception as ex:
                 st.error(f"Failed to record data: {ex}")
 
@@ -276,35 +252,31 @@ if st.session_state.get("data_loaded", False):
         st.metric(label="Total Portfolio Usage", value=f"{df_prev['Usage (kWh)'].sum():,.2f} kWh")
         st.metric(label="Total Portfolio Cost", value=f"${df_prev['Estimated Cost ($)'].sum():,.2f}")
         
-        # --- RECORD PREVIOUS MONTH BUTTON (Safe Handling) ---
+        # --- RECORD PREVIOUS MONTH VIA WEB APP ---
         if st.button("📝 Record Previous Month to Google Sheet", use_container_width=True):
             try:
-                try:
-                    existing_history = conn.read(worksheet="BillingHistory", ttl="0s")
-                    if existing_history is None or existing_history.empty:
-                        existing_history = pd.DataFrame(columns=["Timestamp", "Month/Year", "Device Name", "Tenant", "Phone", "Usage (kWh)", "Estimated Cost ($)"])
-                    else:
-                        existing_history = existing_history.fillna("")
-                except Exception:
-                    existing_history = pd.DataFrame(columns=["Timestamp", "Month/Year", "Device Name", "Tenant", "Phone", "Usage (kWh)", "Estimated Cost ($)"])
-
                 now_timestamp = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-                new_records = []
+                rows_to_send = []
                 for _, r in df_prev.iterrows():
-                    new_records.append({
-                        "Timestamp": now_timestamp,
-                        "Month/Year": prev_month_name,
-                        "Device Name": r["Device Name"],
-                        "Tenant": r["Tenant"],
-                        "Phone": r["Phone"],
-                        "Usage (kWh)": r["Usage (kWh)"],
-                        "Estimated Cost ($)": r["Estimated Cost ($)"]
-                    })
+                    rows_to_send.append([
+                        now_timestamp,
+                        prev_month_name,
+                        r["Device Name"],
+                        r["Tenant"],
+                        str(r["Phone"]),
+                        r["Usage (kWh)"],
+                        r["Estimated Cost ($)"]
+                    ])
                 
-                new_df = pd.DataFrame(new_records)
-                updated_history = pd.concat([new_df, existing_history], ignore_index=True)
-                conn.update(worksheet="BillingHistory", data=updated_history)
-                st.success(f"Successfully recorded {len(new_records)} entries to the top of Google Sheet!")
+                response = requests.post(
+                    st.secrets["GOOGLE_SCRIPT_URL"],
+                    json={"rows": rows_to_send}
+                )
+                
+                if response.status_code == 200:
+                    st.success("Successfully recorded to the top of Google Sheet!")
+                else:
+                    st.error(f"Server returned status {response.status_code}")
             except Exception as ex:
                 st.error(f"Failed to record data: {ex}")
 

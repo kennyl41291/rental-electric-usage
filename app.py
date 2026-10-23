@@ -4,6 +4,8 @@ from pyemvue.enums import Scale, Unit
 import datetime
 import pandas as pd
 import urllib.parse
+import json
+import os
 
 st.set_page_config(
     page_title="Emporia Energy Dashboard", 
@@ -36,28 +38,58 @@ PASSWORD = "19585723a"
 def calculate_cost(kwh):
     return (kwh * 0.44) + 30.0
 
-# --- EDITABLE TENANT DIRECTORY MANAGER ---
-st.sidebar.header("📝 Manage Tenants")
-st.sidebar.caption("Update names or phone numbers directly here without touching code.")
+# File path for persistent storage
+TENANTS_FILE = "tenants.json"
 
-# Initial default tenant mapping table
-default_tenants = pd.DataFrame([
+# Default directory to create the file if it doesn't exist yet
+DEFAULT_TENANTS = [
     {"Device Name": "1631 74th St Basement Rear", "Tenant": "Shaheer", "Phone": "2022904910"},
     {"Device Name": "1563 70th St Basement Front", "Tenant": "Francisco", "Phone": "9295498478"},
     {"Device Name": "1563 70th St 1F", "Tenant": "Marcos", "Phone": "9179821594"},
     {"Device Name": "6628 Wallaston 1F", "Tenant": "Edwin", "Phone": "9297052008"},
     {"Device Name": "1563 70th st 1Rear", "Tenant": "Angel", "Phone": "2016405388"},
     {"Device Name": "1563 70th st Basement Rear", "Tenant": "N/A", "Phone": ""}
-])
+]
 
-# st.data_editor makes the table interactive right inside the browser sidebar
-edited_tenants_df = st.sidebar.data_editor(default_tenants, hide_index=True, num_rows="dynamic")
+# Helper function to load tenant data from file
+def load_tenants():
+    if os.path.exists(TENANTS_FILE):
+        try:
+            with open(TENANTS_FILE, "r") as f:
+                return pd.DataFrame(json.load(f))
+        except Exception:
+            return pd.DataFrame(DEFAULT_TENANTS)
+    else:
+        # Save default file on first run
+        save_tenants(pd.DataFrame(DEFAULT_TENANTS))
+        return pd.DataFrame(DEFAULT_TENANTS)
 
-# Convert the edited table into a quick lookup dictionary for the app
+# Helper function to save tenant data to file
+def save_tenants(df):
+    data = df.to_dict(orient="records")
+    with open(TENANTS_FILE, "w") as f:
+        json.dump(data, f, indent=4)
+
+# --- EDITABLE & PERSISTENT TENANT DIRECTORY MANAGER ---
+st.sidebar.header("📝 Manage Tenants")
+st.sidebar.caption("Update names or phone numbers directly here. Changes are saved automatically!")
+
+# Load stored tenant data
+current_tenants_df = load_tenants()
+
+# st.data_editor makes the table interactive in the browser
+edited_tenants_df = st.sidebar.data_editor(current_tenants_df, hide_index=True, num_rows="dynamic")
+
+# Save changes to tenants.json whenever the user edits the table
+if not edited_tenants_df.equals(current_tenants_df):
+    save_tenants(edited_tenants_df)
+    st.sidebar.success("Saved changes!")
+
+# Build lookup dictionary for device mapping
 TENANT_DIRECTORY = {}
 for _, row in edited_tenants_df.iterrows():
-    TENANT_DIRECTORY[row["Device Name"]] = {
-        "name": row["Tenant"],
+    TENANT_DIRECTORY[str(row["Device Name"])] = {
+        "name": str(row["Tenant"]),
         "phone": str(row["Phone"]).strip()
     }
 
@@ -200,7 +232,7 @@ if st.button("🔄 Refresh Energy Data", type="primary", use_container_width=Tru
                         with col_info:
                             st.text(f"{prop_name}\nTenant: {tenant_name} ({phone_num})\nDue: ${cost:,.2f}")
                         with col_btn:
-                            if phone_num:
+                            if phone_num and phone_num.lower() != "nan":
                                 st.markdown(
                                     f'<a href="{sms_link}"><button style="background-color:#007AFF; color:white; border:none; padding:8px 12px; border-radius:4px; font-weight:bold; cursor:pointer; width:100%;">Text 💬</button></a>',
                                     unsafe_allow_html=True
@@ -240,7 +272,7 @@ if st.button("🔄 Refresh Energy Data", type="primary", use_container_width=Tru
                         with col_info:
                             st.text(f"{prop_name}\nTenant: {tenant_name} ({phone_num})\nDue: ${cost:,.2f}")
                         with col_btn:
-                            if phone_num:
+                            if phone_num and phone_num.lower() != "nan":
                                 st.markdown(
                                     f'<a href="{sms_link}"><button style="background-color:#007AFF; color:white; border:none; padding:8px 12px; border-radius:4px; font-weight:bold; cursor:pointer; width:100%;">Text 💬</button></a>',
                                     unsafe_allow_html=True

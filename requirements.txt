@@ -1,2 +1,5 @@
 streamlit
 pyemvue
+pandas
+st-gsheets-connection
+gspread

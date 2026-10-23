@@ -108,7 +108,6 @@ st.title("⚡ Emporia Energy Usage Dashboard")
 if not USERNAME or not PASSWORD:
     st.error("Please configure EMPORIA_USERNAME and EMPORIA_PASSWORD environment variables or secrets.")
 else:
-    # Automatically fetch data on initial load if not already in session state
     if "df_curr" not in st.session_state:
         try:
             df_prev, df_curr, prev_label, curr_label = fetch_emporia_data(USERNAME, PASSWORD)
@@ -163,7 +162,7 @@ else:
                 sms_prev_links.append("")
         df_prev["Text Link"] = sms_prev_links
 
-        # Tabs: Current Month is listed FIRST so it opens by default
+        # Tabs: Current Month first
         tab1, tab2 = st.tabs([f"📊 Current Month: {st.session_state.curr_label}", f"📅 Previous Month: {st.session_state.prev_label}"])
 
         with tab1:
@@ -172,11 +171,23 @@ else:
             col1.metric("MTD Usage (kWh)", f"{df_curr['Usage (kWh)'].sum():,.2f} kWh")
             col2.metric("MTD Estimated Cost", f"${df_curr['Estimated Cost ($)'].sum():,.2f}")
             
+            # --- Mobile Quick-Text Panel ---
+            st.markdown("### 📱 Quick-Text Tenants (Current Month)")
+            cols = st.container()
+            for _, row in df_curr.iterrows():
+                phone = str(row.get("Phone", "")).strip()
+                tenant_name = row.get("Tenant", "Tenant")
+                cost = row.get("Estimated Cost ($)", 0.0)
+                link = row.get("Text Link", "")
+                if phone and phone != "nan" and link:
+                    st.markdown(f"🔹 **{tenant_name}** (${cost:.2f}) → [💬 Send SMS Text]({link})")
+            st.markdown("---")
+
             st.dataframe(
                 df_curr,
                 use_container_width=True,
                 column_config={
-                    "Text Link": st.column_config.LinkColumn("Text Tenant", display_text="💬 Text")
+                    "Text Link": st.column_config.LinkColumn("Text Column", display_text="💬 Text")
                 }
             )
 
@@ -186,10 +197,21 @@ else:
             col1.metric("Total Usage (kWh)", f"{df_prev['Usage (kWh)'].sum():,.2f} kWh")
             col2.metric("Total Estimated Cost", f"${df_prev['Estimated Cost ($)'].sum():,.2f}")
             
+            # --- Mobile Quick-Text Panel ---
+            st.markdown("### 📱 Quick-Text Tenants (Previous Month)")
+            for _, row in df_prev.iterrows():
+                phone = str(row.get("Phone", "")).strip()
+                tenant_name = row.get("Tenant", "Tenant")
+                cost = row.get("Estimated Cost ($)", 0.0)
+                link = row.get("Text Link", "")
+                if phone and phone != "nan" and link:
+                    st.markdown(f"🔹 **{tenant_name}** (${cost:.2f}) → [💬 Send SMS Text]({link})")
+            st.markdown("---")
+
             st.dataframe(
                 df_prev,
                 use_container_width=True,
                 column_config={
-                    "Text Link": st.column_config.LinkColumn("Text Tenant", display_text="💬 Text")
+                    "Text Link": st.column_config.LinkColumn("Text Column", display_text="💬 Text")
                 }
             )

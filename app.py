@@ -78,17 +78,13 @@ def save_tenants(df):
             st.sidebar.success("Saved & pushed to GitHub!")
             st.cache_data.clear()
         else:
-            try:
-                err_msg = put_res.json().get('message', put_res.text)
-            except Exception:
-                err_msg = put_res.text
-            st.sidebar.error(f"GitHub Error ({put_res.status_code}): {err_msg}")
+            st.sidebar.error(f"GitHub Error {put_res.status_code} for repo '{GITHUB_REPO}': Check token permissions.")
     except Exception as e:
         st.sidebar.error(f"Error saving to GitHub: {e}")
 
 def calculate_cost(kwh):
     raw_cost = (kwh * 0.44) + 30.0
-    return math.ceil(raw_cost)  # Rounds up to the nearest whole dollar
+    return math.ceil(raw_cost)
 
 @st.cache_data(ttl=600)
 def fetch_emporia_data(username, password):

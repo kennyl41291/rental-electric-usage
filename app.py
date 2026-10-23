@@ -3,8 +3,8 @@ from pyemvue import PyEmVue
 from pyemvue.enums import Scale, Unit
 import datetime
 import pandas as pd
+import urllib.parse
 
-# Configure page layout for responsiveness
 st.set_page_config(
     page_title="Emporia Energy Dashboard", 
     page_icon="⚡", 
@@ -12,7 +12,6 @@ st.set_page_config(
     initial_sidebar_state="collapsed"
 )
 
-# Mobile-first CSS tweaks
 st.markdown("""
     <style>
     [data-testid="stMetricValue"] {
@@ -31,7 +30,7 @@ st.markdown("""
 """, unsafe_allow_html=True)
 
 st.title("⚡ Emporia Dashboard")
-st.write("Live electricity consumption and cost breakdown.")
+st.write("Live electricity consumption and tenant SMS billing.")
 
 # Hardcoded credentials
 USERNAME = "kennyl41291@gmail.com"
@@ -41,6 +40,12 @@ PASSWORD = "19585723a"
 def calculate_cost(kwh):
     return (kwh * 0.44) + 30.0
 
+# Map your Emporia device/property names to tenant phone numbers (include country code or dashes, e.g., "+15551234567")
+TENANT_PHONE_NUMBERS = {
+    "Device Name 1": "+15551234567",
+    "Device Name 2": "+15559876543"
+}
+
 if st.button("🔄 Refresh Energy Data", type="primary", use_container_width=True):
     with st.spinner("Fetching live energy data..."):
         try:
@@ -49,21 +54,9 @@ if st.button("🔄 Refresh Energy Data", type="primary", use_container_width=Tru
             devices = vue.get_devices()
 
             now = datetime.datetime.now(datetime.timezone.utc)
-            
-            # 1. Current Month Range (Month-to-Date)
             curr_start = datetime.datetime(now.year, now.month, 1, 0, 0, 0, tzinfo=datetime.timezone.utc)
             curr_end = now
             curr_month_name = now.strftime('%B %Y')
-
-            # 2. Previous Month Range (Full Month)
-            if now.month == 1:
-                prev_start = datetime.datetime(now.year - 1, 12, 1, 0, 0, 0, tzinfo=datetime.timezone.utc)
-                prev_end = datetime.datetime(now.year, 1, 1, 0, 0, 0, tzinfo=datetime.timezone.utc)
-            else:
-                prev_start = datetime.datetime(now.year, now.month - 1, 1, 0, 0, 0, tzinfo=datetime.timezone.utc)
-                prev_end = curr_start
-            
-            prev_month_name = prev_start.strftime('%B %Y')
 
             processed_gids = set()
             devices_map = []
@@ -111,72 +104,49 @@ if st.button("🔄 Refresh Energy Data", type="primary", use_container_width=Tru
                         "Estimated Cost ($)": 30.0
                     })
 
-            # Fetch data for Previous Month
-            prev_raw_data = []
-            for item in devices_map:
-                try:
-                    usage_list, _ = vue.get_chart_usage(
-                        channel=item["channel"],
-                        start=prev_start,
-                        end=prev_end,
-                        scale=Scale.DAY.value,
-                        unit=Unit.KWH.value
+            st.subheader(f"Current Month: {curr_month_name}")
+            
+            if curr_raw_data:
+                df_curr = pd.DataFrame(curr_raw_data)
+                total_curr_kwh = df_curr["Usage (kWh)"].sum()
+                total_curr_cost = df_curr["Estimated Cost ($)"].sum()
+                
+                st.metric(label="Total Portfolio Usage", value=f"{total_curr_kwh:,.2f} kWh")
+                st.metric(label="Total Portfolio Cost", value=f"${total_curr_cost:,.2f}")
+                
+                st.markdown("---")
+                st.write("### 💬 Tenant SMS Quick-Send")
+                
+                # Loop through each property to create an individual SMS link button
+                for index, row in df_curr.iterrows():
+                    prop_name = row["Property / Device"]
+                    usage = row["Usage (kWh)"]
+                    cost = row["Estimated Cost ($)"]
+                    
+                    # Pre-write the friendly message
+                    msg = (
+                        f"Hi! Here is your electricity breakdown for {curr_month_name}:\n"
+                        f"⚡ Usage: {usage:,.2f} kWh\n"
+                        f"💵 Total Due: ${cost:,.2f}"
                     )
-                    total_usage = sum(v for v in usage_list if v is not None) if usage_list else 0.0
-                    est_cost = calculate_cost(total_usage)
-                    prev_raw_data.append({
-                        "Property / Device": item["name"], 
-                        "Usage (kWh)": round(total_usage, 2), 
-                        "Estimated Cost ($)": round(est_cost, 2)
-                    })
-                except Exception:
-                    prev_raw_data.append({
-                        "Property / Device": item["name"], 
-                        "Usage (kWh)": 0.0, 
-                        "Estimated Cost ($)": 30.0
-                    })
-
-            # Organize UI into Tabs
-            tab1, tab2 = st.tabs([f"📅 Current MTD", f"📅 Previous Month"])
-
-            with tab1:
-                st.subheader(f"{curr_month_name}")
-                st.caption(f"Period: {curr_start.strftime('%m/%d/%Y')} - {curr_end.strftime('%m/%d/%Y')}")
-                if curr_raw_data:
-                    df_curr = pd.DataFrame(curr_raw_data)
-                    total_curr_kwh = df_curr["Usage (kWh)"].sum()
-                    total_curr_cost = df_curr["Estimated Cost ($)"].sum()
+                    encoded_msg = urllib.parse.quote(msg)
                     
-                    st.metric(label="Total Portfolio Usage", value=f"{total_curr_kwh:,.2f} kWh")
-                    st.metric(label="Total Portfolio Cost", value=f"${total_curr_cost:,.2f}")
+                    # Pull phone number if mapped, otherwise default empty string
+                    phone = TENANT_PHONE_NUMBERS.get(prop_name, "")
                     
-                    # Format table cells cleanly with units and currency signs as strings
-                    df_curr["Usage (kWh)"] = df_curr["Usage (kWh)"].apply(lambda x: f"{x:,.2f}")
-                    df_curr["Estimated Cost ($)"] = df_curr["Estimated Cost ($)"].apply(lambda x: f"${x:,.2f}")
+                    # Native SMS URI scheme (works universally on iOS and Android)
+                    sms_link = f"sms:{phone}?body={encoded_msg}"
                     
-                    st.table(df_curr[['Property / Device', 'Usage (kWh)', 'Estimated Cost ($)']])
-                else:
-                    st.warning("No data found for current month.")
-
-            with tab2:
-                st.subheader(f"{prev_month_name}")
-                display_end_date = prev_end - datetime.timedelta(days=1)
-                st.caption(f"Period: {prev_start.strftime('%m/%d/%Y')} - {display_end_date.strftime('%m/%d/%Y')}")
-                if prev_raw_data:
-                    df_prev = pd.DataFrame(prev_raw_data)
-                    total_prev_kwh = df_prev["Usage (kWh)"].sum()
-                    total_prev_cost = df_prev["Estimated Cost ($)"].sum()
-                    
-                    st.metric(label="Total Portfolio Usage", value=f"{total_prev_kwh:,.2f} kWh")
-                    st.metric(label="Total Portfolio Cost", value=f"${total_prev_cost:,.2f}")
-                    
-                    # Format table cells cleanly with units and currency signs as strings
-                    df_prev["Usage (kWh)"] = df_prev["Usage (kWh)"].apply(lambda x: f"{x:,.2f}")
-                    df_prev["Estimated Cost ($)"] = df_prev["Estimated Cost ($)"].apply(lambda x: f"${x:,.2f}")
-                    
-                    st.table(df_prev[['Property / Device', 'Usage (kWh)', 'Estimated Cost ($)']])
-                else:
-                    st.warning("No data found for previous month.")
+                    # Render layout with a native text message button
+                    col_info, col_btn = st.columns([2, 1])
+                    with col_info:
+                        st.text(f"{prop_name}\nCost: ${cost:,.2f} ({usage} kWh)")
+                    with col_btn:
+                        st.markdown(
+                            f'<a href="{sms_link}"><button style="background-color:#007AFF; color:white; border:none; padding:8px 12px; border-radius:4px; font-weight:bold; cursor:pointer; width:100%;">Text 💬</button></a>',
+                            unsafe_allow_html=True
+                        )
+                    st.divider()
 
         except Exception as e:
             st.error(f"Error: {e}")

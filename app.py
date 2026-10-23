@@ -173,9 +173,8 @@ else:
                 phone = str(row.get("Phone", "")).strip()
                 tenant_name = row.get("Tenant", "Tenant")
                 cost = row.get("Estimated Cost ($)", 0)
-                usage = row.get("Usage (kWh)", 0.0)
                 if phone and phone != "nan" and phone != "":
-                    msg = f"Hola {tenant_name}, tu uso actual de luz (MTD) es ${cost} ({usage} kWh)."
+                    msg = f"Hola {tenant_name}, tu factura de luz es ${cost}."
                     sms_url = f"sms:{phone}?body={urllib.parse.quote(msg)}"
                     st.markdown(f"🔹 **{tenant_name}** (${cost}) → [💬 Send SMS Text]({sms_url})")
             st.markdown("---")
@@ -201,9 +200,8 @@ else:
                 phone = str(row.get("Phone", "")).strip()
                 tenant_name = row.get("Tenant", "Tenant")
                 cost = row.get("Estimated Cost ($)", 0)
-                usage = row.get("Usage (kWh)", 0.0)
                 if phone and phone != "nan" and phone != "":
-                    msg = f"Hola {tenant_name}, tu factura de luz de {st.session_state.prev_label} es ${cost} ({usage} kWh). Gracias!"
+                    msg = f"Hola {tenant_name}, tu factura de luz es ${cost}."
                     sms_url = f"sms:{phone}?body={urllib.parse.quote(msg)}"
                     st.markdown(f"🔹 **{tenant_name}** (${cost}) → [💬 Send SMS Text]({sms_url})")
             st.markdown("---")

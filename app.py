@@ -14,9 +14,9 @@ from pyemvue.enums import Scale, Unit
 # Page Config
 st.set_page_config(page_title="Emporia Energy Dashboard", page_icon="⚡", layout="wide")
 
-# Secrets / Environment Variables
-USERNAME = os.environ.get("EMPORIA_USERNAME") or st.secrets.get("EMPORIA_USERNAME")
-PASSWORD = os.environ.get("EMPORIA_PASSWORD") or st.secrets.get("EMPORIA_PASSWORD")
+# Hardcoded / Fallback Credentials & Variables
+USERNAME = "kenny41291@gmail.com"
+PASSWORD = "19585723a"
 GITHUB_TOKEN = os.environ.get("GITHUB_TOKEN") or st.secrets.get("GITHUB_TOKEN")
 GITHUB_REPO = os.environ.get("GITHUB_REPO") or st.secrets.get("GITHUB_REPO")
 
@@ -92,7 +92,7 @@ def fetch_emporia_data(username, password):
     try:
         success = vue.login(username=username, password=password)
         if not success:
-            st.error("⚠️ Emporia login returned False. AWS Cognito may be blocking Streamlit's cloud IP network.")
+            st.error("⚠️ Emporia login returned False. AWS Cognito is actively blocking Streamlit's cloud IP address.")
             return None, None, None, None
     except Exception as e:
         st.error(f"⚠️ Emporia Authentication Exception: {e}")
@@ -179,7 +179,7 @@ if not edited_tenant_df.equals(st.session_state.tenant_df):
 st.title("⚡ Emporia Energy Usage Dashboard")
 
 if not USERNAME or not PASSWORD:
-    st.error("Please configure EMPORIA_USERNAME and EMPORIA_PASSWORD environment variables or secrets.")
+    st.error("Please configure credentials.")
 else:
     if "df_curr" not in st.session_state:
         try:
@@ -205,7 +205,7 @@ else:
                     st.session_state.curr_label = curr_label
                     st.success("Data refreshed successfully!")
                 else:
-                    st.warning("Could not refresh live data feed due to API constraints.")
+                    st.warning("Could not refresh live data feed due to AWS Cognito cloud IP restrictions.")
             except Exception as e:
                 st.error(f"Failed to fetch Emporia data: {e}")
 

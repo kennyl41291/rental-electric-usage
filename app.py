@@ -1,5 +1,7 @@
 import datetime
 import os
+import json
+import urllib.parse
 import streamlit as st
 import pandas as pd
 from pyemvue import PyEmVue
@@ -12,6 +14,8 @@ st.set_page_config(page_title="Emporia Energy Dashboard", page_icon="⚡", layou
 USERNAME = os.environ.get("EMPORIA_USERNAME") or st.secrets.get("EMPORIA_USERNAME")
 PASSWORD = os.environ.get("EMPORIA_PASSWORD") or st.secrets.get("EMPORIA_PASSWORD")
 
+TENANT_FILE = "tenants.json"
+
 # Default Tenant Configuration
 DEFAULT_TENANTS = [
     {"Device Name": "1631 74th St Basement Rear", "Tenant": "Shaheer", "Phone": "2022904910"},
@@ -21,6 +25,17 @@ DEFAULT_TENANTS = [
     {"Device Name": "1563 70th st 1Rear", "Tenant": "Angel", "Phone": "2016405388"},
     {"Device Name": "1563 70th st Basement Rear", "Tenant": "N/A", "Phone": ""}
 ]
+
+def load_tenants():
+    if os.path.exists(TENANT_FILE):
+        try:
+            return pd.read_json(TENANT_FILE)
+        except Exception:
+            pass
+    return pd.DataFrame(DEFAULT_TENANTS)
+
+def save_tenants(df):
+    df.to_json(TENANT_FILE, orient="records", indent=4)
 
 def calculate_cost(kwh):
     return (kwh * 0.44) + 30.0
@@ -90,16 +105,21 @@ def fetch_emporia_data(username, password):
 
     return pd.DataFrame(prev_data), pd.DataFrame(curr_data), prev_month_label, curr_month_label
 
-# Sidebar - Tenant Directory Management
+# Sidebar - Tenant Directory Management with Persistence
 st.sidebar.title("🏢 Tenant Directory")
 if "tenant_df" not in st.session_state:
-    st.session_state.tenant_df = pd.DataFrame(DEFAULT_TENANTS)
+    st.session_state.tenant_df = load_tenants()
 
 edited_tenant_df = st.sidebar.data_editor(
     st.session_state.tenant_df,
     num_rows="dynamic",
     key="tenant_editor"
 )
+
+# Automatically save when changes are made in the sidebar editor
+if not edited_tenant_df.equals(st.session_state.tenant_df):
+    st.session_state.tenant_df = edited_tenant_df
+    save_tenants(edited_tenant_df)
 
 # Main UI
 st.title("⚡ Emporia Energy Usage Dashboard")
@@ -142,6 +162,19 @@ else:
             col1.metric("MTD Usage (kWh)", f"{df_curr['Usage (kWh)'].sum():,.2f} kWh")
             col2.metric("MTD Estimated Cost", f"${df_curr['Estimated Cost ($)'].sum():,.2f}")
             
+            # --- Quick-Text Panel for Mobile ---
+            st.markdown("### 📱 Quick-Text Tenants (Current Month)")
+            for _, row in df_curr.iterrows():
+                phone = str(row.get("Phone", "")).strip()
+                tenant_name = row.get("Tenant", "Tenant")
+                cost = row.get("Estimated Cost ($)", 0.0)
+                usage = row.get("Usage (kWh)", 0.0)
+                if phone and phone != "nan" and phone != "":
+                    msg = f"Hola {tenant_name}, tu uso actual de luz (MTD) es ${cost:.2f} ({usage} kWh)."
+                    sms_url = f"sms:{phone}?body={urllib.parse.quote(msg)}"
+                    st.markdown(f"🔹 **{tenant_name}** (${cost:.2f}) → [💬 Send SMS Text]({sms_url})")
+            st.markdown("---")
+
             st.dataframe(
                 df_curr,
                 use_container_width=True,
@@ -154,6 +187,19 @@ else:
             col1.metric("Total Usage (kWh)", f"{df_prev['Usage (kWh)'].sum():,.2f} kWh")
             col2.metric("Total Estimated Cost", f"${df_prev['Estimated Cost ($)'].sum():,.2f}")
             
+            # --- Quick-Text Panel for Mobile ---
+            st.markdown("### 📱 Quick-Text Tenants (Previous Month)")
+            for _, row in df_prev.iterrows():
+                phone = str(row.get("Phone", "")).strip()
+                tenant_name = row.get("Tenant", "Tenant")
+                cost = row.get("Estimated Cost ($)", 0.0)
+                usage = row.get("Usage (kWh)", 0.0)
+                if phone and phone != "nan" and phone != "":
+                    msg = f"Hola {tenant_name}, tu factura de luz de {st.session_state.prev_label} es ${cost:.2f} ({usage} kWh). Gracias!"
+                    sms_url = f"sms:{phone}?body={urllib.parse.quote(msg)}"
+                    st.markdown(f"🔹 **{tenant_name}** (${cost:.2f}) → [💬 Send SMS Text]({sms_url})")
+            st.markdown("---")
+
             st.dataframe(
                 df_prev,
                 use_container_width=True,

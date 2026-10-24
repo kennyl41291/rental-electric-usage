@@ -1,38 +1,38 @@
 [
     {
+        "gid":322911,
         "Device Name":"1631 74th St Basement Rear",
         "Tenant":"Shaheer",
-        "Phone":2022904910,
-        "gid":322911
+        "Phone":"2022904910"
     },
     {
+        "gid":323715,
         "Device Name":"1563 70th St Basement Front",
         "Tenant":"Francisco",
-        "Phone":9295498478,
-        "gid":323715
+        "Phone":"9295498478"
     },
     {
+        "gid":323690,
         "Device Name":"1563 70th St 1F",
         "Tenant":"Marcos",
-        "Phone":9179821594,
-        "gid":323690
+        "Phone":"9179821594"
     },
     {
+        "gid":331781,
         "Device Name":"6628 Wallaston 1F",
         "Tenant":"Edwin",
-        "Phone":9297052008,
-        "gid":331781
+        "Phone":"9297052008"
     },
     {
+        "gid":307978,
         "Device Name":"1563 70th st 1Rear",
         "Tenant":"Angel",
-        "Phone":2016405388,
-        "gid":307978
+        "Phone":"2016405388"
     },
     {
+        "gid":323692,
         "Device Name":"1563 70th st Basement Rear",
-        "Tenant":"kevin low 123",
-        "Phone":3475069537,
-        "gid":323692
+        "Tenant":"kevin low 123 latest",
+        "Phone":"3475069537"
     }
 ]

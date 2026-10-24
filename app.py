@@ -15,6 +15,19 @@ from pyemvue.enums import Scale, Unit
 # Page Config
 st.set_page_config(page_title="Emporia Energy Dashboard", page_icon="⚡", layout="wide")
 
+# --- MOBILE CSS FIX FOR TABLES ---
+st.markdown("""
+<style>
+    /* Force tables and data editors to scale 100% and avoid horizontal scrolling clipping on mobile */
+    [data-testid="stDataEditor"], [data-testid="stTable"] {
+        width: 100% !important;
+    }
+    .stDataFrame, .stDataEditor {
+        overflow-x: auto;
+    }
+</style>
+""", unsafe_allow_html=True)
+
 # Environment Variables (Configured safely for Render & Local)
 USERNAME = "kennyl41291@gmail.com"
 PASSWORD = "19585723a"
@@ -167,7 +180,7 @@ def fetch_emporia_data(username, password):
 
 # --- SIDEBAR: INTERACTIVE TABLE TENANT DIRECTORY ---
 st.sidebar.title("🏢 Tenant Directory")
-st.sidebar.markdown("Edit cells directly below. Changes automatically sync to GitHub.")
+st.sidebar.markdown("Edit cells below. Changes sync to GitHub.")
 
 if "tenant_df" not in st.session_state:
     st.session_state.tenant_df = load_tenants()
@@ -235,7 +248,7 @@ else:
                 tenant_name = row.get("Tenant", "Tenant")
                 cost = row.get("Estimated Cost ($)", 0)
                 if phone and phone != "nan" and phone != "":
-                    msg = f"Hola {tenant_name}, tu factura de luz es ${cost}."
+                    msg = f"Hola {tenant_name}, tu factura de luz je es ${cost}."
                     sms_url = f"sms:{phone}?body={urllib.parse.quote(msg)}"
                     st.markdown(f"🔹 **{tenant_name}** (${cost}) → [💬 Send SMS Text]({sms_url})")
             st.markdown("---")

@@ -2,28 +2,17 @@ import datetime
 import os
 import json
 import math
-import urllib.parse
 import zoneinfo
 import base64
-import io
 import requests
-import streamlit as st
-import pandas as pd
 from pyemvue import PyEmVue
 from pyemvue.enums import Scale, Unit
 
-# Page Config
-st.set_page_config(page_title="Emporia Energy Dashboard", page_icon="⚡", layout="wide")
-
-# Environment Variables (Configured safely for Render & Local)
-USERNAME = "kennyl41291@gmail.com"
-PASSWORD = "19585723a"
-
-GITHUB_TOKEN = os.getenv("GITHUB_TOKEN", "")
-GITHUB_REPO = os.getenv("GITHUB_REPO", "")  # e.g., "your-username/your-repo-name"
-
-EMPORIA_USERNAME = os.getenv("EMPORIA_USERNAME", USERNAME)
-EMPORIA_PASSWORD = os.getenv("EMPORIA_PASSWORD", PASSWORD)
+USERNAME = os.environ.get("EMPORIA_USERNAME")
+PASSWORD = os.environ.get("EMPORIA_PASSWORD")
+GOOGLE_SCRIPT_URL = os.environ.get("GOOGLE_SCRIPT_URL")
+GITHUB_TOKEN = os.environ.get("GITHUB_TOKEN", "")
+GITHUB_REPO = os.environ.get("GITHUB_REPO", "")
 
 TENANT_FILE = "tenants.json"
 
@@ -36,9 +25,8 @@ DEFAULT_TENANTS = [
     {"Device Name": "1563 70th st Basement Rear", "Tenant": "N/A", "Phone": ""}
 ]
 
-@st.cache_data(ttl=60)
-def load_tenants():
-    """Fetches tenants.json directly from GitHub so the dashboard is always live."""
+def load_tenant_directory():
+    """Fetches the live tenants.json directly from GitHub so it always matches the dashboard."""
     if GITHUB_TOKEN and GITHUB_REPO:
         headers = {"Authorization": f"Bearer {GITHUB_TOKEN}", "Accept": "application/vnd.github+json"}
         url = f"https://api.github.com/repos/{GITHUB_REPO}/contents/{TENANT_FILE}"
@@ -47,67 +35,36 @@ def load_tenants():
             if res.status_code == 200:
                 file_content = res.json().get("content")
                 decoded = base64.b64decode(file_content).decode("utf-8")
-                return pd.read_json(io.StringIO(decoded))
+                data = json.loads(decoded)
+                return {t["Device Name"]: t for t in data}
         except Exception as e:
-            st.warning(f"Could not load from GitHub: {e}")
-    return pd.DataFrame(DEFAULT_TENANTS)
-
-def save_tenants(df):
-    """Pushes tenant updates straight to GitHub, robustly handling file creation or updates."""
-    if not GITHUB_TOKEN or not GITHUB_REPO:
-        st.error("GitHub credentials missing in secrets!")
-        return
-
-    headers = {"Authorization": f"Bearer {GITHUB_TOKEN}", "Accept": "application/vnd.github+json"}
-    url = f"https://api.github.com/repos/{GITHUB_REPO}/contents/{TENANT_FILE}"
-    
-    try:
-        json_str = df.to_json(orient="records", indent=4)
-        encoded_content = base64.b64encode(json_str.encode("utf-8")).decode("utf-8")
-
-        sha = None
-        get_res = requests.get(url, headers=headers, timeout=5)
-        if get_res.status_code == 200:
-            sha = get_res.json().get("sha")
-
-        payload = {
-            "message": "Update tenants via Streamlit Dashboard [skip ci]",
-            "content": encoded_content,
-            "branch": "main"
-        }
-        if sha:
-            payload["sha"] = sha
-
-        put_res = requests.put(url, headers=headers, json=payload, timeout=10)
-        if put_res.status_code in [200, 201]:
-            st.sidebar.success("Saved & pushed to GitHub!")
-            st.cache_data.clear()
-        else:
-            st.sidebar.error(f"GitHub Error {put_res.status_code} for repo '{GITHUB_REPO}': Check token permissions.")
-    except Exception as e:
-        st.sidebar.error(f"Error saving to GitHub: {e}")
+            print(f"Could not load tenants from GitHub API: {e}")
+            
+    # Fallback to local file if API isn't configured
+    if os.path.exists(TENANT_FILE):
+        try:
+            with open(TENANT_FILE, "r", encoding="utf-8") as f:
+                data = json.load(f)
+                return {t["Device Name"]: t for t in data}
+        except Exception as e:
+            print(f"Error loading local {TENANT_FILE}: {e}")
+            
+    return {t["Device Name"]: t for t in DEFAULT_TENANTS}
 
 def calculate_cost(kwh):
     raw_cost = (kwh * 0.44) + 30.0
     return math.ceil(raw_cost)
 
-@st.cache_data(ttl=600)
-def fetch_emporia_data(username, password):
-    vue = PyEmVue()
-    try:
-        success = vue.login(username=username, password=password)
-        if not success:
-            st.error("⚠️ Emporia login returned False. AWS Cognito is actively blocking Streamlit's cloud IP address.")
-            return None, None, None, None
-    except Exception as e:
-        st.error(f"⚠️ Emporia Authentication Exception: {e}")
-        return None, None, None, None
+def main():
+    if not USERNAME or not PASSWORD or not GOOGLE_SCRIPT_URL:
+        print("Missing environment variables.")
+        return
 
-    try:
-        devices = vue.get_devices()
-    except Exception as e:
-        st.error(f"⚠️ Error retrieving devices from Emporia API: {e}")
-        return None, None, None, None
+    TENANT_DIRECTORY = load_tenant_directory()
+
+    vue = PyEmVue()
+    vue.login(username=USERNAME, password=PASSWORD)
+    devices = vue.get_devices()
 
     est_tz = zoneinfo.ZoneInfo("America/New_York")
     now = datetime.datetime.now(est_tz)
@@ -118,9 +75,8 @@ def fetch_emporia_data(username, password):
     else:
         prev_start = datetime.datetime(now.year, now.month - 1, 1, 0, 0, 0, tzinfo=est_tz)
         prev_end = datetime.datetime(now.year, now.month, 1, 0, 0, 0, tzinfo=est_tz)
-
-    curr_start = datetime.datetime(now.year, now.month, 1, 0, 0, 0, tzinfo=est_tz)
-    curr_end = now
+    
+    prev_month_name = prev_start.strftime('%B %Y')
 
     processed_gids = set()
     devices_map = []
@@ -140,136 +96,61 @@ def fetch_emporia_data(username, password):
             processed_gids.add(gid)
             break
 
-    prev_data = []
-    curr_data = []
-
+    prev_raw_data = []
     for item in devices_map:
         dev_name = item["name"]
         
-        try:
-            usage_prev, _ = vue.get_chart_usage(item["channel"], start=prev_start, end=prev_end, scale=Scale.DAY.value, unit=Unit.KWH.value)
-            tot_prev = sum(v for v in usage_prev if v is not None) if usage_prev else 0.0
-        except Exception:
-            tot_prev = 0.0
-        prev_data.append({"Device Name": dev_name, "Usage (kWh)": round(tot_prev, 2), "Estimated Cost ($)": calculate_cost(tot_prev)})
-
-        try:
-            usage_curr, _ = vue.get_chart_usage(item["channel"], start=curr_start, end=curr_end, scale=Scale.DAY.value, unit=Unit.KWH.value)
-            tot_curr = sum(v for v in usage_curr if v is not None) if usage_curr else 0.0
-        except Exception:
-            tot_curr = 0.0
-        curr_data.append({"Device Name": dev_name, "Usage (kWh)": round(tot_curr, 2), "Estimated Cost ($)": calculate_cost(tot_curr)})
-
-    prev_month_label = prev_start.strftime('%B %Y')
-    curr_month_label = f"{curr_start.strftime('%B %Y')} (MTD)"
-
-    return pd.DataFrame(prev_data), pd.DataFrame(curr_data), prev_month_label, curr_month_label
-
-# Sidebar - Tenant Directory Management with GitHub Persistence
-st.sidebar.title("🏢 Tenant Directory")
-if "tenant_df" not in st.session_state:
-    st.session_state.tenant_df = load_tenants()
-
-edited_tenant_df = st.sidebar.data_editor(
-    st.session_state.tenant_df,
-    num_rows="dynamic",
-    key="tenant_editor"
-)
-
-if not edited_tenant_df.equals(st.session_state.tenant_df):
-    st.session_state.tenant_df = edited_tenant_df
-    save_tenants(edited_tenant_df)
-
-# Main UI
-st.title("⚡ Emporia Energy Usage Dashboard")
-
-if not USERNAME or not PASSWORD:
-    st.error("Please configure credentials.")
-else:
-    if "df_curr" not in st.session_state:
-        try:
-            res = fetch_emporia_data(USERNAME, PASSWORD)
-            if res[0] is not None:
-                df_prev, df_curr, prev_label, curr_label = res
-                st.session_state.df_prev = df_prev
-                st.session_state.df_curr = df_curr
-                st.session_state.prev_label = prev_label
-                st.session_state.curr_label = curr_label
-        except Exception as e:
-            st.error(f"Failed to fetch Emporia data automatically: {e}")
-
-    if st.button("🔄 Refresh Energy Data", type="primary"):
-        with st.spinner("Connecting to Emporia..."):
-            try:
-                res = fetch_emporia_data(USERNAME, PASSWORD)
-                if res[0] is not None:
-                    df_prev, df_curr, prev_label, curr_label = res
-                    st.session_state.df_prev = df_prev
-                    st.session_state.df_curr = df_curr
-                    st.session_state.prev_label = prev_label
-                    st.session_state.curr_label = curr_label
-                    st.success("Data refreshed successfully!")
-                else:
-                    st.warning("Could not refresh live data feed due to AWS Cognito cloud IP restrictions.")
-            except Exception as e:
-                st.error(f"Failed to fetch Emporia data: {e}")
-
-    if "df_curr" in st.session_state and st.session_state.df_curr is not None:
-        df_prev = pd.merge(edited_tenant_df, st.session_state.df_prev, on="Device Name", how="left")
-        df_curr = pd.merge(edited_tenant_df, st.session_state.df_curr, on="Device Name", how="left")
-
-        tab1, tab2 = st.tabs([f"📊 Current Month: {st.session_state.curr_label}", f"📅 Previous Month: {st.session_state.prev_label}"])
-
-        with tab1:
-            st.subheader(f"Month-to-Date Usage & Cost for {st.session_state.curr_label}")
-            col1, col2 = st.columns(2)
-            col1.metric("MTD Usage (kWh)", f"{df_curr['Usage (kWh)'].sum():,.2f} kWh")
-            col2.metric("MTD Estimated Cost", f"${df_curr['Estimated Cost ($)'].sum():,.0f}")
+        # Only process devices that exist in your live tenant directory
+        if dev_name not in TENANT_DIRECTORY:
+            continue
             
-            st.markdown("### 📱 Quick-Text Tenants (Current Month)")
-            for _, row in df_curr.iterrows():
-                phone = str(row.get("Phone", "")).strip()
-                tenant_name = row.get("Tenant", "Tenant")
-                cost = row.get("Estimated Cost ($)", 0)
-                if phone and phone != "nan" and phone != "":
-                    msg = f"Hola {tenant_name}, tu factura de luz es ${cost}."
-                    sms_url = f"sms:{phone}?body={urllib.parse.quote(msg)}"
-                    st.markdown(f"🔹 **{tenant_name}** (${cost}) → [💬 Send SMS Text]({sms_url})")
-            st.markdown("---")
-
-            st.dataframe(
-                df_curr,
-                use_container_width=True,
-                hide_index=True,
-                column_config={
-                    "Estimated Cost ($)": st.column_config.NumberColumn(format="$%d")
-                }
+        t_info = TENANT_DIRECTORY[dev_name]
+        try:
+            usage_list, _ = vue.get_chart_usage(
+                channel=item["channel"],
+                start=prev_start,
+                end=prev_end,
+                scale=Scale.DAY.value,
+                unit=Unit.KWH.value
             )
+            total_usage = sum(v for v in usage_list if v is not None) if usage_list else 0.0
+            est_cost = calculate_cost(total_usage)
+            prev_raw_data.append({
+                "Device Name": dev_name,
+                "Tenant": t_info.get("Tenant", "Unknown"),
+                "Phone": t_info.get("Phone", ""),
+                "Usage (kWh)": round(total_usage, 2),
+                "Estimated Cost ($)": est_cost
+            })
+        except Exception:
+            prev_raw_data.append({
+                "Device Name": dev_name,
+                "Tenant": t_info.get("Tenant", "Unknown"),
+                "Phone": t_info.get("Phone", ""),
+                "Usage (kWh)": 0.0,
+                "Estimated Cost ($)": 30.0
+            })
 
-        with tab2:
-            st.subheader(f"Usage & Cost Breakdown for {st.session_state.prev_label}")
-            col1, col2 = st.columns(2)
-            col1.metric("Total Usage (kWh)", f"{df_prev['Usage (kWh)'].sum():,.2f} kWh")
-            col2.metric("Total Estimated Cost", f"${df_prev['Estimated Cost ($)'].sum():,.0f}")
-            
-            st.markdown("### 📱 Quick-Text Tenants (Previous Month)")
-            for _, row in df_prev.iterrows():
-                phone = str(row.get("Phone", "")).strip()
-                tenant_name = row.get("Tenant", "Tenant")
-                cost = row.get("Estimated Cost ($)", 0)
-                if phone and phone != "nan" and phone != "":
-                    msg = f"Hola {tenant_name}, tu factura de luz es ${cost}."
-                    sms_url = f"sms:{phone}?body={urllib.parse.quote(msg)}"
-                    st.markdown(f"🔹 **{tenant_name}** (${cost}) → [💬 Send SMS Text]({sms_url})")
-            st.markdown("---")
+    now_timestamp = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+    rows_to_send = []
+    for r in prev_raw_data:
+        rows_to_send.append([
+            now_timestamp,
+            prev_month_name,
+            r["Device Name"],
+            r["Tenant"],
+            str(r["Phone"]),
+            r["Usage (kWh)"],
+            r["Estimated Cost ($)"]
+        ])
 
-            st.dataframe(
-                df_prev,
-                use_container_width=True,
-                hide_index=True,
-                column_config={
-                    "Estimated Cost ($)": st.column_config.NumberColumn(format="$%d")
-                }
-            )
-    else:
-        st.info("💡 **Tenant Directory & GitHub Sync Active**: Your sidebar tenant configuration tools are fully functional. Live Emporia metrics are temporarily restricted by AWS Cognito from this cloud host network.")
+    headers = {'Content-Type': 'application/json'}
+    response = requests.post(
+        GOOGLE_SCRIPT_URL,
+        json={"rows": rows_to_send},
+        headers=headers
+    )
+    print(f"Response status: {response.status_code}, body: {response.text}")
+
+if __name__ == "__main__":
+    main()

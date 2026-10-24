@@ -26,5 +26,7 @@ jobs:
           EMPORIA_USERNAME: ${{ secrets.EMPORIA_USERNAME }}
           EMPORIA_PASSWORD: ${{ secrets.EMPORIA_PASSWORD }}
           GOOGLE_SCRIPT_URL: ${{ secrets.GOOGLE_SCRIPT_URL }}
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GITHUB_REPO: ${{ github.repository }}
         run: |
-          python auto_logger.py
+          python -u auto_logger.py

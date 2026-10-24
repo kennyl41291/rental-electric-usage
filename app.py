@@ -225,6 +225,7 @@ else:
             st.error(f"Failed to fetch Emporia data automatically: {e}")
 
     if st.button("🔄 Refresh Energy Data", type="primary"):
+        fetch_emporia_data.clear()  # Clear cache to immediately capture renames from Emporia API
         with st.spinner("Connecting to Emporia..."):
             try:
                 res = fetch_emporia_data(USERNAME, PASSWORD)

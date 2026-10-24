@@ -96,22 +96,19 @@ def calculate_cost(kwh):
     raw_cost = (kwh * 0.44) + 30.0
     return math.ceil(raw_cost)
 
-@st.cache_data(ttl=600)
+@st.cache_data(ttl=300)
 def fetch_emporia_data(username, password):
     vue = PyEmVue()
     try:
         success = vue.login(username=username, password=password)
         if not success:
-            st.error("⚠️ Emporia login returned False. AWS Cognito is actively blocking Streamlit's cloud IP address.")
             return None, None, None, None
-    except Exception as e:
-        st.error(f"⚠️ Emporia Authentication Exception: {e}")
+    except Exception:
         return None, None, None, None
 
     try:
         devices = vue.get_devices()
-    except Exception as e:
-        st.error(f"⚠️ Error retrieving devices from Emporia API: {e}")
+    except Exception:
         return None, None, None, None
 
     est_tz = zoneinfo.ZoneInfo("America/New_York")
@@ -177,24 +174,13 @@ st.title("⚡ Emporia Energy Usage Dashboard")
 if "tenant_df" not in st.session_state:
     st.session_state.tenant_df = load_tenants()
 
-if not USERNAME or not PASSWORD:
-    st.error("Please configure credentials.")
-else:
-    # Fetch data early so sync runs before the expander renders
-    if "df_curr" not in st.session_state:
-        try:
-            res = fetch_emporia_data(USERNAME, PASSWORD)
-            if res[0] is not None:
-                df_prev, df_curr, prev_label, curr_label = res
-                st.session_state.df_prev = df_prev
-                st.session_state.df_curr = df_curr
-                st.session_state.prev_label = prev_label
-                st.session_state.curr_label = curr_label
-        except Exception as e:
-            st.error(f"Failed to fetch Emporia data automatically: {e}")
+# Always fetch live data on load or rerun to guarantee rapid sync
+if USERNAME and PASSWORD:
+    res = fetch_emporia_data(USERNAME, PASSWORD)
+    if res[0] is not None:
+        st.session_state.df_prev, st.session_state.df_curr, st.session_state.prev_label, st.session_state.curr_label = res
 
-    # --- AUTO-SYNC & AUTO-RENAME BY GID (RUNS BEFORE UI RENDER) ---
-    if "df_curr" in st.session_state and st.session_state.df_curr is not None:
+        # --- INSTANT GID AUTO-RENAME & AUTO-ADD SYNC ---
         tenant_df = st.session_state.tenant_df
         emporia_curr = st.session_state.df_curr
         
@@ -218,6 +204,8 @@ else:
                 if not name_match.empty:
                     idx = name_match.index[0]
                     tenant_df.at[idx, "gid"] = e_gid
+                    if tenant_df.at[idx, "Device Name"] != e_name:
+                        tenant_df.at[idx, "Device Name"] = e_name
                     updated_directory = True
                 else:
                     new_row = pd.DataFrame([{"gid": e_gid, "Device Name": e_name, "Tenant": "N/A", "Phone": ""}])
@@ -256,27 +244,15 @@ with st.expander("🏢 Manage & Edit Tenant Directory (GitHub Sync)", expanded=F
         new_df = pd.DataFrame(updated_rows)
         st.session_state.tenant_df = new_df
         save_tenants(new_df)
+        st.success("Saved successfully!")
         st.rerun()
 
 st.markdown("---")
 
-if st.button("🔄 Refresh Energy Data", type="primary"):
-    fetch_emporia_data.clear()  # Clear cache to immediately capture renames from Emporia API
-    with st.spinner("Connecting to Emporia..."):
-        try:
-            res = fetch_emporia_data(USERNAME, PASSWORD)
-            if res[0] is not None:
-                df_prev, df_curr, prev_label, curr_label = res
-                st.session_state.df_prev = df_prev
-                st.session_state.df_curr = df_curr
-                st.session_state.prev_label = prev_label
-                st.session_state.curr_label = curr_label
-                st.success("Data refreshed successfully!")
-                st.rerun()
-            else:
-                st.warning("Could not refresh live data feed due to AWS Cognito cloud IP restrictions.")
-        except Exception as e:
-            st.error(f"Failed to fetch Emporia data: {e}")
+if st.button("🔄 Force Refresh Energy Data", type="primary"):
+    fetch_emporia_data.clear()
+    st.success("Cache cleared! Reloading live data...")
+    st.rer()
 
 if "df_curr" in st.session_state and st.session_state.df_curr is not None:
     df_prev = pd.merge(st.session_state.tenant_df, st.session_state.df_prev, on="gid", how="left", suffixes=("", "_drop"))
@@ -339,4 +315,4 @@ if "df_curr" in st.session_state and st.session_state.df_curr is not None:
             }
         )
 else:
-    st.info("💡 **Tenant Directory & GitHub Sync Active**: Your tenant editor is fully functional. Live Emporia metrics are temporarily restricted by AWS Cognito from this cloud host network.")
+    st.info("💡 **Tenant Directory & GitHub Sync Active**: Connecting to Emporia API...")

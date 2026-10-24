@@ -177,9 +177,60 @@ st.title("⚡ Emporia Energy Usage Dashboard")
 if "tenant_df" not in st.session_state:
     st.session_state.tenant_df = load_tenants()
 
-# --- MOBILE-FRIENDLY TENANT EDITOR (NO SCROLLING & LOCKED DEVICES) ---
+if not USERNAME or not PASSWORD:
+    st.error("Please configure credentials.")
+else:
+    # Fetch data early so sync runs before the expander renders
+    if "df_curr" not in st.session_state:
+        try:
+            res = fetch_emporia_data(USERNAME, PASSWORD)
+            if res[0] is not None:
+                df_prev, df_curr, prev_label, curr_label = res
+                st.session_state.df_prev = df_prev
+                st.session_state.df_curr = df_curr
+                st.session_state.prev_label = prev_label
+                st.session_state.curr_label = curr_label
+        except Exception as e:
+            st.error(f"Failed to fetch Emporia data automatically: {e}")
+
+    # --- AUTO-SYNC & AUTO-RENAME BY GID (RUNS BEFORE UI RENDER) ---
+    if "df_curr" in st.session_state and st.session_state.df_curr is not None:
+        tenant_df = st.session_state.tenant_df
+        emporia_curr = st.session_state.df_curr
+        
+        if "gid" not in tenant_df.columns:
+            tenant_df["gid"] = None
+            
+        updated_directory = False
+        
+        for _, emp_row in emporia_curr.iterrows():
+            e_gid = emp_row["gid"]
+            e_name = emp_row["Device Name"]
+            
+            match = tenant_df[tenant_df["gid"] == e_gid]
+            if not match.empty:
+                idx = match.index[0]
+                if tenant_df.at[idx, "Device Name"] != e_name:
+                    tenant_df.at[idx, "Device Name"] = e_name
+                    updated_directory = True
+            else:
+                name_match = tenant_df[(tenant_df["Device Name"] == e_name) & (tenant_df["gid"].isna() | (tenant_df["gid"] == ""))]
+                if not name_match.empty:
+                    idx = name_match.index[0]
+                    tenant_df.at[idx, "gid"] = e_gid
+                    updated_directory = True
+                else:
+                    new_row = pd.DataFrame([{"gid": e_gid, "Device Name": e_name, "Tenant": "N/A", "Phone": ""}])
+                    tenant_df = pd.concat([tenant_df, new_row], ignore_index=True)
+                    updated_directory = True
+                    
+        if updated_directory:
+            st.session_state.tenant_df = tenant_df
+            save_tenants(tenant_df)
+
+# --- MOBILE-FRIENDLY TENANT EDITOR ---
 with st.expander("🏢 Manage & Edit Tenant Directory (GitHub Sync)", expanded=False):
-    st.markdown("Update tenant names and phone numbers below. Device names are locked, and no horizontal scrolling is required.")
+    st.markdown("Update tenant names and phone numbers below. Device names are locked and automatically synced from Emporia.")
     
     updated_rows = []
     df_current = st.session_state.tenant_df
@@ -209,10 +260,9 @@ with st.expander("🏢 Manage & Edit Tenant Directory (GitHub Sync)", expanded=F
 
 st.markdown("---")
 
-if not USERNAME or not PASSWORD:
-    st.error("Please configure credentials.")
-else:
-    if "df_curr" not in st.session_state:
+if st.button("🔄 Refresh Energy Data", type="primary"):
+    fetch_emporia_data.clear()  # Clear cache to immediately capture renames from Emporia API
+    with st.spinner("Connecting to Emporia..."):
         try:
             res = fetch_emporia_data(USERNAME, PASSWORD)
             if res[0] is not None:
@@ -221,124 +271,72 @@ else:
                 st.session_state.df_curr = df_curr
                 st.session_state.prev_label = prev_label
                 st.session_state.curr_label = curr_label
-        except Exception as e:
-            st.error(f"Failed to fetch Emporia data automatically: {e}")
-
-    if st.button("🔄 Refresh Energy Data", type="primary"):
-        fetch_emporia_data.clear()  # Clear cache to immediately capture renames from Emporia API
-        with st.spinner("Connecting to Emporia..."):
-            try:
-                res = fetch_emporia_data(USERNAME, PASSWORD)
-                if res[0] is not None:
-                    df_prev, df_curr, prev_label, curr_label = res
-                    st.session_state.df_prev = df_prev
-                    st.session_state.df_curr = df_curr
-                    st.session_state.prev_label = prev_label
-                    st.session_state.curr_label = curr_label
-                    st.success("Data refreshed successfully!")
-                else:
-                    st.warning("Could not refresh live data feed due to AWS Cognito cloud IP restrictions.")
-            except Exception as e:
-                st.error(f"Failed to fetch Emporia data: {e}")
-
-    if "df_curr" in st.session_state and st.session_state.df_curr is not None:
-        # --- AUTO-SYNC & AUTO-RENAME BY GID ---
-        tenant_df = st.session_state.tenant_df
-        emporia_curr = st.session_state.df_curr
-        
-        if "gid" not in tenant_df.columns:
-            tenant_df["gid"] = None
-            
-        updated_directory = False
-        
-        for _, emp_row in emporia_curr.iterrows():
-            e_gid = emp_row["gid"]
-            e_name = emp_row["Device Name"]
-            
-            # Match by GID first
-            match = tenant_df[tenant_df["gid"] == e_gid]
-            if not match.empty:
-                idx = match.index[0]
-                if tenant_df.at[idx, "Device Name"] != e_name:
-                    tenant_df.at[idx, "Device Name"] = e_name
-                    updated_directory = True
+                st.success("Data refreshed successfully!")
+                st.rerun()
             else:
-                # Fallback check by name for initial migration
-                name_match = tenant_df[(tenant_df["Device Name"] == e_name) & (tenant_df["gid"].isna() | (tenant_df["gid"] == ""))]
-                if not name_match.empty:
-                    idx = name_match.index[0]
-                    tenant_df.at[idx, "gid"] = e_gid
-                    updated_directory = True
-                else:
-                    # Brand new device discovered from Emporia!
-                    new_row = pd.DataFrame([{"gid": e_gid, "Device Name": e_name, "Tenant": "N/A", "Phone": ""}])
-                    tenant_df = pd.concat([tenant_df, new_row], ignore_index=True)
-                    updated_directory = True
-                    
-        if updated_directory:
-            st.session_state.tenant_df = tenant_df
-            save_tenants(tenant_df)
-            st.rerun()
+                st.warning("Could not refresh live data feed due to AWS Cognito cloud IP restrictions.")
+        except Exception as e:
+            st.error(f"Failed to fetch Emporia data: {e}")
 
-        df_prev = pd.merge(st.session_state.tenant_df, st.session_state.df_prev, on="gid", how="left", suffixes=("", "_drop"))
-        df_curr = pd.merge(st.session_state.tenant_df, st.session_state.df_curr, on="gid", how="left", suffixes=("", "_drop"))
+if "df_curr" in st.session_state and st.session_state.df_curr is not None:
+    df_prev = pd.merge(st.session_state.tenant_df, st.session_state.df_prev, on="gid", how="left", suffixes=("", "_drop"))
+    df_curr = pd.merge(st.session_state.tenant_df, st.session_state.df_curr, on="gid", how="left", suffixes=("", "_drop"))
+    
+    df_prev = df_prev.loc[:, ~df_prev.columns.str.endswith('_drop')]
+    df_curr = df_curr.loc[:, ~df_curr.columns.str.endswith('_drop')]
+
+    tab1, tab2 = st.tabs([f"📊 Current Month: {st.session_state.curr_label}", f"📅 Previous Month: {st.session_state.prev_label}"])
+
+    with tab1:
+        st.subheader(f"Month-to-Date Usage & Cost for {st.session_state.curr_label}")
+        col1, col2 = st.columns(2)
+        col1.metric("MTD Usage (kWh)", f"{df_curr['Usage (kWh)'].sum():,.2f} kWh")
+        col2.metric("MTD Estimated Cost", f"${df_curr['Estimated Cost ($)'].sum():,.0f}")
         
-        # Clean up duplicate columns if any generated by suffix
-        df_prev = df_prev.loc[:, ~df_prev.columns.str.endswith('_drop')]
-        df_curr = df_curr.loc[:, ~df_curr.columns.str.endswith('_drop')]
+        st.markdown("### 📱 Quick-Text Tenants (Current Month)")
+        for _, row in df_curr.iterrows():
+            phone = str(row.get("Phone", "")).strip()
+            tenant_name = row.get("Tenant", "Tenant")
+            cost = row.get("Estimated Cost ($)", 0)
+            if phone and phone != "nan" and phone != "":
+                msg = f"Hola {tenant_name}, tu factura de luz es ${cost}."
+                sms_url = f"sms:{phone}?body={urllib.parse.quote(msg)}"
+                st.markdown(f"🔹 **{tenant_name}** (${cost}) → [💬 Send SMS Text]({sms_url})")
+        st.markdown("---")
 
-        tab1, tab2 = st.tabs([f"📊 Current Month: {st.session_state.curr_label}", f"📅 Previous Month: {st.session_state.prev_label}"])
+        st.dataframe(
+            df_curr[['Device Name', 'Tenant', 'Phone', 'Usage (kWh)', 'Estimated Cost ($)']],
+            use_container_width=True,
+            hide_index=True,
+            column_config={
+                "Estimated Cost ($)": st.column_config.NumberColumn(format="$%d")
+            }
+        )
 
-        with tab1:
-            st.subheader(f"Month-to-Date Usage & Cost for {st.session_state.curr_label}")
-            col1, col2 = st.columns(2)
-            col1.metric("MTD Usage (kWh)", f"{df_curr['Usage (kWh)'].sum():,.2f} kWh")
-            col2.metric("MTD Estimated Cost", f"${df_curr['Estimated Cost ($)'].sum():,.0f}")
-            
-            st.markdown("### 📱 Quick-Text Tenants (Current Month)")
-            for _, row in df_curr.iterrows():
-                phone = str(row.get("Phone", "")).strip()
-                tenant_name = row.get("Tenant", "Tenant")
-                cost = row.get("Estimated Cost ($)", 0)
-                if phone and phone != "nan" and phone != "":
-                    msg = f"Hola {tenant_name}, tu factura de luz es ${cost}."
-                    sms_url = f"sms:{phone}?body={urllib.parse.quote(msg)}"
-                    st.markdown(f"🔹 **{tenant_name}** (${cost}) → [💬 Send SMS Text]({sms_url})")
-            st.markdown("---")
+    with tab2:
+        st.subheader(f"Usage & Cost Breakdown for {st.session_state.prev_label}")
+        col1, col2 = st.columns(2)
+        col1.metric("Total Usage (kWh)", f"{df_prev['Usage (kWh)'].sum():,.2f} kWh")
+        col2.metric("Total Estimated Cost", f"${df_prev['Estimated Cost ($)'].sum():,.0f}")
+        
+        st.markdown("### 📱 Quick-Text Tenants (Previous Month)")
+        for _, row in df_prev.iterrows():
+            phone = str(row.get("Phone", "")).strip()
+            tenant_name = row.get("Tenant", "Tenant")
+            cost = row.get("Estimated Cost ($)", 0)
+            if phone and phone != "nan" and phone != "":
+                msg = f"Hola {tenant_name}, tu factura de luz es ${cost}."
+                sms_url = f"sms:{phone}?body={urllib.parse.quote(msg)}"
+                st.markdown(f"🔹 **{tenant_name}** (${cost}) → [💬 Send SMS Text]({sms_url})")
+        st.markdown("---")
 
-            st.dataframe(
-                df_curr[['Device Name', 'Tenant', 'Phone', 'Usage (kWh)', 'Estimated Cost ($)']],
-                use_container_width=True,
-                hide_index=True,
-                column_config={
-                    "Estimated Cost ($)": st.column_config.NumberColumn(format="$%d")
-                }
-            )
-
-        with tab2:
-            st.subheader(f"Usage & Cost Breakdown for {st.session_state.prev_label}")
-            col1, col2 = st.columns(2)
-            col1.metric("Total Usage (kWh)", f"{df_prev['Usage (kWh)'].sum():,.2f} kWh")
-            col2.metric("Total Estimated Cost", f"${df_prev['Estimated Cost ($)'].sum():,.0f}")
-            
-            st.markdown("### 📱 Quick-Text Tenants (Previous Month)")
-            for _, row in df_prev.iterrows():
-                phone = str(row.get("Phone", "")).strip()
-                tenant_name = row.get("Tenant", "Tenant")
-                cost = row.get("Estimated Cost ($)", 0)
-                if phone and phone != "nan" and phone != "":
-                    msg = f"Hola {tenant_name}, tu factura de luz es ${cost}."
-                    sms_url = f"sms:{phone}?body={urllib.parse.quote(msg)}"
-                    st.markdown(f"🔹 **{tenant_name}** (${cost}) → [💬 Send SMS Text]({sms_url})")
-            st.markdown("---")
-
-            st.dataframe(
-                df_prev[['Device Name', 'Tenant', 'Phone', 'Usage (kWh)', 'Estimated Cost ($)']],
-                use_container_width=True,
-                hide_index=True,
-                column_config={
-                    "Estimated Cost ($)": st.column_config.NumberColumn(format="$%d")
-                }
-            )
-    else:
-        st.info("💡 **Tenant Directory & GitHub Sync Active**: Your tenant editor is fully functional. Live Emporia metrics are temporarily restricted by AWS Cognito from this cloud host network.")
+        st.dataframe(
+            df_prev[['Device Name', 'Tenant', 'Phone', 'Usage (kWh)', 'Estimated Cost ($)']],
+            use_container_width=True,
+            hide_index=True,
+            column_config={
+                "Estimated Cost ($)": st.column_config.NumberColumn(format="$%d")
+            }
+        )
+else:
+    st.info("💡 **Tenant Directory & GitHub Sync Active**: Your tenant editor is fully functional. Live Emporia metrics are temporarily restricted by AWS Cognito from this cloud host network.")

@@ -3,6 +3,7 @@ import os
 import json
 import math
 import zoneinfo
+import base64
 import requests
 from pyemvue import PyEmVue
 from pyemvue.enums import Scale, Unit
@@ -10,6 +11,8 @@ from pyemvue.enums import Scale, Unit
 USERNAME = os.environ.get("EMPORIA_USERNAME")
 PASSWORD = os.environ.get("EMPORIA_PASSWORD")
 GOOGLE_SCRIPT_URL = os.environ.get("GOOGLE_SCRIPT_URL")
+GITHUB_TOKEN = os.environ.get("GITHUB_TOKEN", "")
+GITHUB_REPO = os.environ.get("GITHUB_REPO", "")
 
 TENANT_FILE = "tenants.json"
 
@@ -23,18 +26,34 @@ DEFAULT_TENANTS = [
 ]
 
 def load_tenant_directory():
+    """Fetches the live tenants.json directly from GitHub so it always matches the dashboard."""
+    if GITHUB_TOKEN and GITHUB_REPO:
+        headers = {"Authorization": f"Bearer {GITHUB_TOKEN}", "Accept": "application/vnd.github+json"}
+        url = f"https://api.github.com/repos/{GITHUB_REPO}/contents/{TENANT_FILE}"
+        try:
+            res = requests.get(url, headers=headers, timeout=10)
+            if res.status_code == 200:
+                file_content = res.json().get("content")
+                decoded = base64.b64decode(file_content).decode("utf-8")
+                data = json.loads(decoded)
+                return {t["Device Name"]: t for t in data}
+        except Exception as e:
+            print(f"Could not load tenants from GitHub API: {e}")
+            
+    # Fallback to local file if API isn't configured
     if os.path.exists(TENANT_FILE):
         try:
             with open(TENANT_FILE, "r", encoding="utf-8") as f:
                 data = json.load(f)
                 return {t["Device Name"]: t for t in data}
         except Exception as e:
-            print(f"Error loading {TENANT_FILE}: {e}")
+            print(f"Error loading local {TENANT_FILE}: {e}")
+            
     return {t["Device Name"]: t for t in DEFAULT_TENANTS}
 
 def calculate_cost(kwh):
     raw_cost = (kwh * 0.44) + 30.0
-    return math.ceil(raw_cost)  # Matches your whole-dollar rounding rule
+    return math.ceil(raw_cost)
 
 def main():
     if not USERNAME or not PASSWORD or not GOOGLE_SCRIPT_URL:
@@ -81,7 +100,7 @@ def main():
     for item in devices_map:
         dev_name = item["name"]
         
-        # Only process devices that exist in your tenant directory to ignore extra meters
+        # Only process devices that exist in your live tenant directory
         if dev_name not in TENANT_DIRECTORY:
             continue
             

@@ -252,7 +252,7 @@ st.markdown("---")
 if st.button("🔄 Force Refresh Energy Data", type="primary"):
     fetch_emporia_data.clear()
     st.success("Cache cleared! Reloading live data...")
-    st.rer()
+    st.rerun()
 
 if "df_curr" in st.session_state and st.session_state.df_curr is not None:
     df_prev = pd.merge(st.session_state.tenant_df, st.session_state.df_prev, on="gid", how="left", suffixes=("", "_drop"))

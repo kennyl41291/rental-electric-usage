@@ -171,29 +171,35 @@ st.title("⚡ Emporia Energy Usage Dashboard")
 if "tenant_df" not in st.session_state:
     st.session_state.tenant_df = load_tenants()
 
-# --- MAIN PAGE: COLLAPSIBLE WIDE TABLE EDITOR (LOCKED DEVICE NAMES) ---
+# --- MOBILE-FRIENDLY TENANT EDITOR (NO SCROLLING & LOCKED DEVICES) ---
 with st.expander("🏢 Manage & Edit Tenant Directory (GitHub Sync)", expanded=False):
-    st.markdown("Edit tenant names and phone numbers directly below. **Device names are locked** to prevent accidental changes.")
+    st.markdown("Update tenant names and phone numbers below. Device names are locked, and no horizontal scrolling is required.")
     
-    edited_tenant_df = st.data_editor(
-        st.session_state.tenant_df,
-        num_rows="dynamic",
-        use_container_width=True,
-        hide_index=True,
-        column_config={
-            "Device Name": st.column_config.TextColumn(
-                "Device Name",
-                disabled=True
-            ),
-            "Tenant": st.column_config.TextColumn("Tenant Name"),
-            "Phone": st.column_config.TextColumn("Phone Number")
-        },
-        key="main_tenant_editor"
-    )
+    updated_rows = []
+    df_current = st.session_state.tenant_df
     
-    if not edited_tenant_df.equals(st.session_state.tenant_df):
-        st.session_state.tenant_df = edited_tenant_df
-        save_tenants(edited_tenant_df)
+    for index, row in df_current.iterrows():
+        cols = st.columns([2, 2, 1.5])
+        with cols[0]:
+            # Locked device name display
+            st.text_input("Device Name", value=str(row["Device Name"]), disabled=True, key=f"dev_{index}")
+        with cols[1]:
+            t_name = st.text_input("Tenant Name", value=str(row["Tenant"]), key=f"tenant_{index}")
+        with cols[2]:
+            t_phone = st.text_input("Phone", value=str(row["Phone"]), key=f"phone_{index}")
+            
+        updated_rows.append({
+            "Device Name": row["Device Name"],
+            "Tenant": t_name,
+            "Phone": t_phone
+        })
+        st.divider()
+        
+    if st.button("💾 Save Directory Changes", type="primary"):
+        new_df = pd.DataFrame(updated_rows)
+        st.session_state.tenant_df = new_df
+        save_tenants(new_df)
+        st.rerun()
 
 st.markdown("---")
 
@@ -235,55 +241,4 @@ else:
         tab1, tab2 = st.tabs([f"📊 Current Month: {st.session_state.curr_label}", f"📅 Previous Month: {st.session_state.prev_label}"])
 
         with tab1:
-            st.subheader(f"Month-to-Date Usage & Cost for {st.session_state.curr_label}")
-            col1, col2 = st.columns(2)
-            col1.metric("MTD Usage (kWh)", f"{df_curr['Usage (kWh)'].sum():,.2f} kWh")
-            col2.metric("MTD Estimated Cost", f"${df_curr['Estimated Cost ($)'].sum():,.0f}")
-            
-            st.markdown("### 📱 Quick-Text Tenants (Current Month)")
-            for _, row in df_curr.iterrows():
-                phone = str(row.get("Phone", "")).strip()
-                tenant_name = row.get("Tenant", "Tenant")
-                cost = row.get("Estimated Cost ($)", 0)
-                if phone and phone != "nan" and phone != "":
-                    msg = f"Hola {tenant_name}, tu factura de luz es ${cost}."
-                    sms_url = f"sms:{phone}?body={urllib.parse.quote(msg)}"
-                    st.markdown(f"🔹 **{tenant_name}** (${cost}) → [💬 Send SMS Text]({sms_url})")
-            st.markdown("---")
-
-            st.dataframe(
-                df_curr,
-                use_container_width=True,
-                hide_index=True,
-                column_config={
-                    "Estimated Cost ($)": st.column_config.NumberColumn(format="$%d")
-                }
-            )
-
-        with tab2:
-            st.subheader(f"Usage & Cost Breakdown for {st.session_state.prev_label}")
-            col1, col2 = st.columns(2)
-            col1.metric("Total Usage (kWh)", f"{df_prev['Usage (kWh)'].sum():,.2f} kWh")
-            col2.metric("Total Estimated Cost", f"${df_prev['Estimated Cost ($)'].sum():,.0f}")
-            
-            st.markdown("### 📱 Quick-Text Tenants (Previous Month)")
-            for _, row in df_prev.iterrows():
-                phone = str(row.get("Phone", "")).strip()
-                tenant_name = row.get("Tenant", "Tenant")
-                cost = row.get("Estimated Cost ($)", 0)
-                if phone and phone != "nan" and phone != "":
-                    msg = f"Hola {tenant_name}, tu factura de luz es ${cost}."
-                    sms_url = f"sms:{phone}?body={urllib.parse.quote(msg)}"
-                    st.markdown(f"🔹 **{tenant_name}** (${cost}) → [💬 Send SMS Text]({sms_url})")
-            st.markdown("---")
-
-            st.dataframe(
-                df_prev,
-                use_container_width=True,
-                hide_index=True,
-                column_config={
-                    "Estimated Cost ($)": st.column_config.NumberColumn(format="$%d")
-                }
-            )
-    else:
-        st.info("💡 **Tenant Directory & GitHub Sync Active**: Your wide table editor is fully functional. Live Emporia metrics are temporarily restricted by AWS Cognito from this cloud host network.")
+            st.subheader(f"Month-to-Date Usage & Cost for {st.session_

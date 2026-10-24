@@ -2,6 +2,7 @@ import datetime
 import os
 import json
 import math
+import zoneinfo
 import requests
 from pyemvue import PyEmVue
 from pyemvue.enums import Scale, Unit
@@ -46,14 +47,15 @@ def main():
     vue.login(username=USERNAME, password=PASSWORD)
     devices = vue.get_devices()
 
-    now = datetime.datetime.now(datetime.timezone.utc)
+    est_tz = zoneinfo.ZoneInfo("America/New_York")
+    now = datetime.datetime.now(est_tz)
     
     if now.month == 1:
-        prev_start = datetime.datetime(now.year - 1, 12, 1, 0, 0, 0, tzinfo=datetime.timezone.utc)
-        prev_end = datetime.datetime(now.year, 1, 1, 0, 0, 0, tzinfo=datetime.timezone.utc)
+        prev_start = datetime.datetime(now.year - 1, 12, 1, 0, 0, 0, tzinfo=est_tz)
+        prev_end = datetime.datetime(now.year, 1, 1, 0, 0, 0, tzinfo=est_tz)
     else:
-        prev_start = datetime.datetime(now.year, now.month - 1, 1, 0, 0, 0, tzinfo=datetime.timezone.utc)
-        prev_end = datetime.datetime(now.year, now.month, 1, 0, 0, 0, tzinfo=datetime.timezone.utc)
+        prev_start = datetime.datetime(now.year, now.month - 1, 1, 0, 0, 0, tzinfo=est_tz)
+        prev_end = datetime.datetime(now.year, now.month, 1, 0, 0, 0, tzinfo=est_tz)
     
     prev_month_name = prev_start.strftime('%B %Y')
 

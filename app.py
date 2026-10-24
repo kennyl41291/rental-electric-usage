@@ -14,31 +14,15 @@ from pyemvue.enums import Scale, Unit
 # Page Config
 st.set_page_config(page_title="Emporia Energy Dashboard", page_icon="⚡", layout="wide")
 
-# Hardcoded / Fallback Credentials & Variables
+# Environment Variables (Configured safely for Render & Local)
 USERNAME = "kenny41291@gmail.com"
 PASSWORD = "19585723a"
-# Safe fallback that won't crash if secrets.toml isn't present
-GITHUB_TOKEN = os.getenv("GITHUB_TOKEN")
-if not GITHUB_TOKEN:
-    try:
-        GITHUB_TOKEN = st.secrets.get("GITHUB_TOKEN")
-    except Exception:
-        GITHUB_TOKEN = None
 
-# Same for your Emporia credentials:
-EMPORIA_USERNAME = os.getenv("EMPORIA_USERNAME")
-if not EMPORIA_USERNAME:
-    try:
-        EMPORIA_USERNAME = st.secrets.get("EMPORIA_USERNAME")
-    except Exception:
-        EMPORIA_USERNAME = None
+GITHUB_TOKEN = os.getenv("GITHUB_TOKEN", "")
+GITHUB_REPO = os.getenv("GITHUB_REPO", "")  # e.g., "your-username/your-repo-name"
 
-EMPORIA_PASSWORD = os.getenv("EMPORIA_PASSWORD")
-if not EMPORIA_PASSWORD:
-    try:
-        EMPORIA_PASSWORD = st.secrets.get("EMPORIA_PASSWORD")
-    except Exception:
-        EMPORIA_PASSWORD = None
+EMPORIA_USERNAME = os.getenv("EMPORIA_USERNAME", USERNAME)
+EMPORIA_PASSWORD = os.getenv("EMPORIA_PASSWORD", PASSWORD)
 
 TENANT_FILE = "tenants.json"
 

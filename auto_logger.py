@@ -80,7 +80,12 @@ def main():
     prev_raw_data = []
     for item in devices_map:
         dev_name = item["name"]
-        t_info = TENANT_DIRECTORY.get(dev_name, {"Tenant": "Unknown", "Phone": ""})
+        
+        # Only process devices that exist in your tenant directory to ignore extra meters
+        if dev_name not in TENANT_DIRECTORY:
+            continue
+            
+        t_info = TENANT_DIRECTORY[dev_name]
         try:
             usage_list, _ = vue.get_chart_usage(
                 channel=item["channel"],

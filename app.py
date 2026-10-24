@@ -15,19 +15,6 @@ from pyemvue.enums import Scale, Unit
 # Page Config
 st.set_page_config(page_title="Emporia Energy Dashboard", page_icon="⚡", layout="wide")
 
-# --- MOBILE CSS FIX FOR TABLES ---
-st.markdown("""
-<style>
-    /* Force tables and data editors to scale 100% and avoid horizontal scrolling clipping on mobile */
-    [data-testid="stDataEditor"], [data-testid="stTable"] {
-        width: 100% !important;
-    }
-    .stDataFrame, .stDataEditor {
-        overflow-x: auto;
-    }
-</style>
-""", unsafe_allow_html=True)
-
 # Environment Variables (Configured safely for Render & Local)
 USERNAME = "kennyl41291@gmail.com"
 PASSWORD = "19585723a"
@@ -93,12 +80,12 @@ def save_tenants(df):
 
         put_res = requests.put(url, headers=headers, json=payload, timeout=10)
         if put_res.status_code in [200, 201]:
-            st.sidebar.success("Saved & pushed to GitHub!")
+            st.success("Tenant changes saved & pushed to GitHub successfully!")
             st.cache_data.clear()
         else:
-            st.sidebar.error(f"GitHub Error {put_res.status_code} for repo '{GITHUB_REPO}': Check token permissions.")
+            st.error(f"GitHub Error {put_res.status_code} for repo '{GITHUB_REPO}': Check token permissions.")
     except Exception as e:
-        st.sidebar.error(f"Error saving to GitHub: {e}")
+        st.error(f"Error saving to GitHub: {e}")
 
 def calculate_cost(kwh):
     raw_cost = (kwh * 0.44) + 30.0
@@ -178,26 +165,28 @@ def fetch_emporia_data(username, password):
 
     return pd.DataFrame(prev_data), pd.DataFrame(curr_data), prev_month_label, curr_month_label
 
-# --- SIDEBAR: INTERACTIVE TABLE TENANT DIRECTORY ---
-st.sidebar.title("🏢 Tenant Directory")
-st.sidebar.markdown("Edit cells below. Changes sync to GitHub.")
+# Main UI
+st.title("⚡ Emporia Energy Usage Dashboard")
 
 if "tenant_df" not in st.session_state:
     st.session_state.tenant_df = load_tenants()
 
-edited_tenant_df = st.sidebar.data_editor(
-    st.session_state.tenant_df,
-    num_rows="dynamic",
-    use_container_width=True,
-    key="sidebar_tenant_editor"
-)
+# --- MAIN PAGE: COLLAPSIBLE WIDE TABLE EDITOR ---
+with st.expander("🏢 Manage & Edit Tenant Directory (GitHub Sync)", expanded=False):
+    st.markdown("Edit tenant names, device mappings, or phone numbers directly in the table below without sidebar squeezing. Click **Save Directory Changes** to push updates to GitHub.")
+    
+    edited_tenant_df = st.data_editor(
+        st.session_state.tenant_df,
+        num_rows="dynamic",
+        use_container_width=True,
+        key="main_tenant_editor"
+    )
+    
+    if not edited_tenant_df.equals(st.session_state.tenant_df):
+        st.session_state.tenant_df = edited_tenant_df
+        save_tenants(edited_tenant_df)
 
-if not edited_tenant_df.equals(st.session_state.tenant_df):
-    st.session_state.tenant_df = edited_tenant_df
-    save_tenants(edited_tenant_df)
-
-# Main UI
-st.title("⚡ Emporia Energy Usage Dashboard")
+st.markdown("---")
 
 if not USERNAME or not PASSWORD:
     st.error("Please configure credentials.")
@@ -248,7 +237,7 @@ else:
                 tenant_name = row.get("Tenant", "Tenant")
                 cost = row.get("Estimated Cost ($)", 0)
                 if phone and phone != "nan" and phone != "":
-                    msg = f"Hola {tenant_name}, tu factura de luz je es ${cost}."
+                    msg = f"Hola {tenant_name}, tu factura de luz es ${cost}."
                     sms_url = f"sms:{phone}?body={urllib.parse.quote(msg)}"
                     st.markdown(f"🔹 **{tenant_name}** (${cost}) → [💬 Send SMS Text]({sms_url})")
             st.markdown("---")
@@ -288,4 +277,4 @@ else:
                 }
             )
     else:
-        st.info("💡 **Tenant Directory & GitHub Sync Active**: Your sidebar table editor is fully functional. Live Emporia metrics are temporarily restricted by AWS Cognito from this cloud host network.")
+        st.info("💡 **Tenant Directory & GitHub Sync Active**: Your wide table editor is fully functional. Live Emporia metrics are temporarily restricted by AWS Cognito from this cloud host network.")

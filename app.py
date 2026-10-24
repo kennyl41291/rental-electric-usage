@@ -47,10 +47,15 @@ def load_tenants():
             if res.status_code == 200:
                 file_content = res.json().get("content")
                 decoded = base64.b64decode(file_content).decode("utf-8")
-                return pd.read_json(io.StringIO(decoded))
+                df = pd.read_json(io.StringIO(decoded))
+                if "gid" not in df.columns:
+                    df["gid"] = None
+                return df
         except Exception as e:
             st.warning(f"Could not load from GitHub: {e}")
-    return pd.DataFrame(DEFAULT_TENANTS)
+    df = pd.DataFrame(DEFAULT_TENANTS)
+    df["gid"] = None
+    return df
 
 def save_tenants(df):
     """Pushes tenant updates straight to GitHub, robustly handling file creation or updates."""
@@ -144,6 +149,7 @@ def fetch_emporia_data(username, password):
     curr_data = []
 
     for item in devices_map:
+        gid = item["gid"]
         dev_name = item["name"]
         
         try:
@@ -151,14 +157,14 @@ def fetch_emporia_data(username, password):
             tot_prev = sum(v for v in usage_prev if v is not None) if usage_prev else 0.0
         except Exception:
             tot_prev = 0.0
-        prev_data.append({"Device Name": dev_name, "Usage (kWh)": round(tot_prev, 2), "Estimated Cost ($)": calculate_cost(tot_prev)})
+        prev_data.append({"gid": gid, "Device Name": dev_name, "Usage (kWh)": round(tot_prev, 2), "Estimated Cost ($)": calculate_cost(tot_prev)})
 
         try:
             usage_curr, _ = vue.get_chart_usage(item["channel"], start=curr_start, end=curr_end, scale=Scale.DAY.value, unit=Unit.KWH.value)
             tot_curr = sum(v for v in usage_curr if v is not None) if usage_curr else 0.0
         except Exception:
             tot_curr = 0.0
-        curr_data.append({"Device Name": dev_name, "Usage (kWh)": round(tot_curr, 2), "Estimated Cost ($)": calculate_cost(tot_curr)})
+        curr_data.append({"gid": gid, "Device Name": dev_name, "Usage (kWh)": round(tot_curr, 2), "Estimated Cost ($)": calculate_cost(tot_curr)})
 
     prev_month_label = prev_start.strftime('%B %Y')
     curr_month_label = f"{curr_start.strftime('%B %Y')} (MTD)"
@@ -188,6 +194,7 @@ with st.expander("🏢 Manage & Edit Tenant Directory (GitHub Sync)", expanded=F
             t_phone = st.text_input("Phone", value=str(row["Phone"]), key=f"phone_{index}")
             
         updated_rows.append({
+            "gid": row.get("gid"),
             "Device Name": row["Device Name"],
             "Tenant": t_name,
             "Phone": t_phone
@@ -234,61 +241,32 @@ else:
                 st.error(f"Failed to fetch Emporia data: {e}")
 
     if "df_curr" in st.session_state and st.session_state.df_curr is not None:
-        df_prev = pd.merge(st.session_state.tenant_df, st.session_state.df_prev, on="Device Name", how="left")
-        df_curr = pd.merge(st.session_state.tenant_df, st.session_state.df_curr, on="Device Name", how="left")
-
-        tab1, tab2 = st.tabs([f"📊 Current Month: {st.session_state.curr_label}", f"📅 Previous Month: {st.session_state.prev_label}"])
-
-        with tab1:
-            st.subheader(f"Month-to-Date Usage & Cost for {st.session_state.curr_label}")
-            col1, col2 = st.columns(2)
-            col1.metric("MTD Usage (kWh)", f"{df_curr['Usage (kWh)'].sum():,.2f} kWh")
-            col2.metric("MTD Estimated Cost", f"${df_curr['Estimated Cost ($)'].sum():,.0f}")
+        # --- AUTO-SYNC & AUTO-RENAME BY GID ---
+        tenant_df = st.session_state.tenant_df
+        emporia_curr = st.session_state.df_curr
+        
+        if "gid" not in tenant_df.columns:
+            tenant_df["gid"] = None
             
-            st.markdown("### 📱 Quick-Text Tenants (Current Month)")
-            for _, row in df_curr.iterrows():
-                phone = str(row.get("Phone", "")).strip()
-                tenant_name = row.get("Tenant", "Tenant")
-                cost = row.get("Estimated Cost ($)", 0)
-                if phone and phone != "nan" and phone != "":
-                    msg = f"Hola {tenant_name}, tu factura de luz es ${cost}."
-                    sms_url = f"sms:{phone}?body={urllib.parse.quote(msg)}"
-                    st.markdown(f"🔹 **{tenant_name}** (${cost}) → [💬 Send SMS Text]({sms_url})")
-            st.markdown("---")
-
-            st.dataframe(
-                df_curr,
-                use_container_width=True,
-                hide_index=True,
-                column_config={
-                    "Estimated Cost ($)": st.column_config.NumberColumn(format="$%d")
-                }
-            )
-
-        with tab2:
-            st.subheader(f"Usage & Cost Breakdown for {st.session_state.prev_label}")
-            col1, col2 = st.columns(2)
-            col1.metric("Total Usage (kWh)", f"{df_prev['Usage (kWh)'].sum():,.2f} kWh")
-            col2.metric("Total Estimated Cost", f"${df_prev['Estimated Cost ($)'].sum():,.0f}")
+        updated_directory = False
+        
+        for _, emp_row in emporia_curr.iterrows():
+            e_gid = emp_row["gid"]
+            e_name = emp_row["Device Name"]
             
-            st.markdown("### 📱 Quick-Text Tenants (Previous Month)")
-            for _, row in df_prev.iterrows():
-                phone = str(row.get("Phone", "")).strip()
-                tenant_name = row.get("Tenant", "Tenant")
-                cost = row.get("Estimated Cost ($)", 0)
-                if phone and phone != "nan" and phone != "":
-                    msg = f"Hola {tenant_name}, tu factura de luz es ${cost}."
-                    sms_url = f"sms:{phone}?body={urllib.parse.quote(msg)}"
-                    st.markdown(f"🔹 **{tenant_name}** (${cost}) → [💬 Send SMS Text]({sms_url})")
-            st.markdown("---")
-
-            st.dataframe(
-                df_prev,
-                use_container_width=True,
-                hide_index=True,
-                column_config={
-                    "Estimated Cost ($)": st.column_config.NumberColumn(format="$%d")
-                }
-            )
-    else:
-        st.info("💡 **Tenant Directory & GitHub Sync Active**: Your tenant editor is fully functional. Live Emporia metrics are temporarily restricted by AWS Cognito from this cloud host network.")
+            # Match by GID first
+            match = tenant_df[tenant_df["gid"] == e_gid]
+            if not match.empty:
+                idx = match.index[0]
+                if tenant_df.at[idx, "Device Name"] != e_name:
+                    tenant_df.at[idx, "Device Name"] = e_name
+                    updated_directory = True
+            else:
+                # Fallback check by name for initial migration
+                name_match = tenant_df[(tenant_df["Device Name"] == e_name) & (tenant_df["gid"].isna() | (tenant_df["gid"] == ""))]
+                if not name_match.empty:
+                    idx = name_match.index[0]
+                    tenant_df.at[idx, "gid"] = e_gid
+                    updated_directory = True
+                else:
+                    # Brand new device discovered from Emporia!

@@ -177,13 +177,4 @@ with st.expander("🏢 Manage & Edit Tenant Directory (GitHub Sync)", expanded=F
     
     edited_tenant_df = st.data_editor(
         st.session_state.tenant_df,
-        num_rows="dynamic",
-        use_container_width=True,
-        hide_index=True,
-        column_config={
-            "Device Name": st.column_config.TextColumn(
-                "Device Name",
-                disabled=True  # Locks the device name column so it cannot be edited or scrolled horizontally out of bounds
-            ),
-            "Tenant": st.column_config.TextColumn("Tenant Name"),
-            "Phone": st.column
+        num_rows="dynamic

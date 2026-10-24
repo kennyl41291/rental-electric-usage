@@ -14,9 +14,6 @@ from pyemvue.enums import Scale, Unit
 # Page Config
 st.set_page_config(page_title="Emporia Energy Dashboard", page_icon="⚡", layout="wide")
 
-# Environment Variables (Configured safely for Render & Local)
-USERNAME = "kennyl41291@gmail.com"
-PASSWORD = "19585723a"
 
 GITHUB_TOKEN = os.getenv("GITHUB_TOKEN", "")
 GITHUB_REPO = os.getenv("GITHUB_REPO", "")  # e.g., "your-username/your-repo-name"

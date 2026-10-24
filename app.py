@@ -80,12 +80,12 @@ def save_tenants(df):
 
         put_res = requests.put(url, headers=headers, json=payload, timeout=10)
         if put_res.status_code in [200, 201]:
-            st.success("Tenant changes saved & pushed to GitHub successfully!")
+            st.sidebar.success("Saved & pushed to GitHub!")
             st.cache_data.clear()
         else:
-            st.error(f"GitHub Error {put_res.status_code} for repo '{GITHUB_REPO}': Check token permissions.")
+            st.sidebar.error(f"GitHub Error {put_res.status_code} for repo '{GITHUB_REPO}': Check token permissions.")
     except Exception as e:
-        st.error(f"Error saving to GitHub: {e}")
+        st.sidebar.error(f"Error saving to GitHub: {e}")
 
 def calculate_cost(kwh):
     raw_cost = (kwh * 0.44) + 30.0
@@ -165,11 +165,26 @@ def fetch_emporia_data(username, password):
 
     return pd.DataFrame(prev_data), pd.DataFrame(curr_data), prev_month_label, curr_month_label
 
-# Main UI
-st.title("⚡ Emporia Energy Usage Dashboard")
+# --- SIDEBAR: INTERACTIVE TABLE TENANT DIRECTORY ---
+st.sidebar.title("🏢 Tenant Directory")
+st.sidebar.markdown("Edit cells directly below. Changes automatically sync to GitHub.")
 
 if "tenant_df" not in st.session_state:
     st.session_state.tenant_df = load_tenants()
+
+edited_tenant_df = st.sidebar.data_editor(
+    st.session_state.tenant_df,
+    num_rows="dynamic",
+    use_container_width=True,
+    key="sidebar_tenant_editor"
+)
+
+if not edited_tenant_df.equals(st.session_state.tenant_df):
+    st.session_state.tenant_df = edited_tenant_df
+    save_tenants(edited_tenant_df)
+
+# Main UI
+st.title("⚡ Emporia Energy Usage Dashboard")
 
 if not USERNAME or not PASSWORD:
     st.error("Please configure credentials.")
@@ -260,21 +275,4 @@ else:
                 }
             )
     else:
-        st.info("💡 **Live Emporia Data Feed**: Connect or refresh your energy metrics above.")
-
-    # --- EDITABLE TENANT DIRECTORY SECTION (MAIN VIEW) ---
-    st.markdown("---")
-    with st.expander("🏢 Manage & Edit Tenant Directory (GitHub Sync)", expanded=False):
-        st.markdown("Edit tenant names, device mappings, or phone numbers directly in the table below. Click **Save Directory Changes** to instantly push updates back to GitHub.")
-        
-        edited_tenant_df = st.data_editor(
-            st.session_state.tenant_df,
-            num_rows="dynamic",
-            use_container_width=True,
-            key="main_tenant_editor"
-        )
-        
-        if st.button("💾 Save Directory Changes", type="primary"):
-            st.session_state.tenant_df = edited_tenant_df
-            save_tenants(edited_tenant_df)
-            st.rerun()
+        st.info("💡 **Tenant Directory & GitHub Sync Active**: Your sidebar table editor is fully functional. Live Emporia metrics are temporarily restricted by AWS Cognito from this cloud host network.")

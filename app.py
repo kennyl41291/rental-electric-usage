@@ -10,6 +10,23 @@ import streamlit as st
 import pandas as pd
 from pyemvue import PyEmVue
 from pyemvue.enums import Scale, Unit
+import io  # <-- Add this at the very top of your imports if it's not already there
+
+@st.cache_data(ttl=60)
+def load_tenants():
+    """Fetches tenants.json directly from GitHub so the dashboard is always live."""
+    if GITHUB_TOKEN and GITHUB_REPO:
+        headers = {"Authorization": f"Bearer {GITHUB_TOKEN}", "Accept": "application/vnd.github+json"}
+        url = f"https://api.github.com/repos/{GITHUB_REPO}/contents/{TENANT_FILE}"
+        try:
+            res = requests.get(url, headers=headers, timeout=10)
+            if res.status_code == 200:
+                file_content = res.json().get("content")
+                decoded = base64.b64decode(file_content).decode("utf-8")
+                return pd.read_json(io.StringIO(decoded))  # <-- Wrapped in io.StringIO here
+        except Exception as e:
+            st.warning(f"Could not load from GitHub: {e}")
+    return pd.DataFrame(DEFAULT_TENANTS)
 
 # Page Config
 st.set_page_config(page_title="Emporia Energy Dashboard", page_icon="⚡", layout="wide")

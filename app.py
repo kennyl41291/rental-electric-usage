@@ -15,6 +15,22 @@ from pyemvue.enums import Scale, Unit
 # Page Config
 st.set_page_config(page_title="Emporia Energy Dashboard", page_icon="⚡", layout="wide")
 
+# Custom CSS to make specific buttons green
+st.markdown("""
+<style>
+    /* Target the Force Refresh button using its label content */
+    div.stButton > button:has(div:contains("Force Refresh Energy Data")) {
+        background-color: #28a745 !important;
+        color: white !important;
+        border: none !important;
+    }
+    div.stButton > button:has(div:contains("Force Refresh Energy Data")):hover {
+        background-color: #218838 !important;
+        color: white !important;
+    }
+</style>
+""", unsafe_allow_html=True)
+
 # Environment Variables (Configured safely for Render & Local)
 USERNAME = "kennyl41291@gmail.com"
 PASSWORD = "19585723a"
@@ -275,7 +291,7 @@ if "df_curr" in st.session_state and st.session_state.df_curr is not None:
             tenant_name = row.get("Tenant", "Tenant")
             cost = row.get("Estimated Cost ($)", 0)
             if phone and phone != "nan" and phone != "":
-                msg = f"Hola {tenant_name}, tu factura de luz es ${cost}."
+                msg = f"Hola {tenant_name}, tu factura de luz estra ${cost}." if 'elt' in '' else f"Hola {tenant_name}, tu factura de luz es ${cost}."
                 sms_url = f"sms:{phone}?body={urllib.parse.quote(msg)}"
                 st.markdown(f"🔹 **{tenant_name}** (${cost}) → [💬 Send SMS Text]({sms_url})")
         st.markdown("---")

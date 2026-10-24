@@ -101,10 +101,8 @@ def main():
     for item in devices_map:
         dev_name = item["name"]
         
-        # DEBUG PRINT: Check exactly what device names are being evaluated
         print(f"Evaluating Device -> '{dev_name}' | In Directory? {dev_name in TENANT_DIRECTORY}")
 
-        # Only process devices that exist in your live tenant directory
         if dev_name not in TENANT_DIRECTORY:
             print(f"-> SKIPPING '{dev_name}' (Not found in tenant directory)")
             continue
@@ -138,7 +136,9 @@ def main():
                 "Estimated Cost ($)": 30.0
             })
 
-    now_timestamp = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+    # Timestamp formatted in Eastern Time
+    now_timestamp = datetime.datetime.now(est_tz).strftime("%Y-%m-%d %H:%M:%S")
+    
     rows_to_send = []
     for r in prev_raw_data:
         rows_to_send.append([

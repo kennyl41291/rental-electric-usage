@@ -61,6 +61,7 @@ def main():
         return
 
     TENANT_DIRECTORY = load_tenant_directory()
+    print(f"Loaded Tenant Directory Keys: {list(TENANT_DIRECTORY.keys())}")
 
     vue = PyEmVue()
     vue.login(username=USERNAME, password=PASSWORD)
@@ -100,8 +101,12 @@ def main():
     for item in devices_map:
         dev_name = item["name"]
         
+        # DEBUG PRINT: Check exactly what device names are being evaluated
+        print(f"Evaluating Device -> '{dev_name}' | In Directory? {dev_name in TENANT_DIRECTORY}")
+
         # Only process devices that exist in your live tenant directory
         if dev_name not in TENANT_DIRECTORY:
+            print(f"-> SKIPPING '{dev_name}' (Not found in tenant directory)")
             continue
             
         t_info = TENANT_DIRECTORY[dev_name]
@@ -122,7 +127,9 @@ def main():
                 "Usage (kWh)": round(total_usage, 2),
                 "Estimated Cost ($)": est_cost
             })
-        except Exception:
+            print(f"-> LOGGED '{dev_name}': {round(total_usage, 2)} kWh")
+        except Exception as e:
+            print(f"-> ERROR fetching usage for '{dev_name}': {e}")
             prev_raw_data.append({
                 "Device Name": dev_name,
                 "Tenant": t_info.get("Tenant", "Unknown"),

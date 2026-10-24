@@ -17,8 +17,28 @@ st.set_page_config(page_title="Emporia Energy Dashboard", page_icon="⚡", layou
 # Hardcoded / Fallback Credentials & Variables
 USERNAME = "kenny41291@gmail.com"
 PASSWORD = "19585723a"
-GITHUB_TOKEN = os.environ.get("GITHUB_TOKEN") or st.secrets.get("GITHUB_TOKEN")
-GITHUB_REPO = os.environ.get("GITHUB_REPO") or st.secrets.get("GITHUB_REPO")
+# Safe fallback that won't crash if secrets.toml isn't present
+GITHUB_TOKEN = os.getenv("GITHUB_TOKEN")
+if not GITHUB_TOKEN:
+    try:
+        GITHUB_TOKEN = st.secrets.get("GITHUB_TOKEN")
+    except Exception:
+        GITHUB_TOKEN = None
+
+# Same for your Emporia credentials:
+EMPORIA_USERNAME = os.getenv("EMPORIA_USERNAME")
+if not EMPORIA_USERNAME:
+    try:
+        EMPORIA_USERNAME = st.secrets.get("EMPORIA_USERNAME")
+    except Exception:
+        EMPORIA_USERNAME = None
+
+EMPORIA_PASSWORD = os.getenv("EMPORIA_PASSWORD")
+if not EMPORIA_PASSWORD:
+    try:
+        EMPORIA_PASSWORD = st.secrets.get("EMPORIA_PASSWORD")
+    except Exception:
+        EMPORIA_PASSWORD = None
 
 TENANT_FILE = "tenants.json"
 

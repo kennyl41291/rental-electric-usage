@@ -177,4 +177,113 @@ with st.expander("🏢 Manage & Edit Tenant Directory (GitHub Sync)", expanded=F
     
     edited_tenant_df = st.data_editor(
         st.session_state.tenant_df,
-        num_rows="dynamic
+        num_rows="dynamic",
+        use_container_width=True,
+        hide_index=True,
+        column_config={
+            "Device Name": st.column_config.TextColumn(
+                "Device Name",
+                disabled=True
+            ),
+            "Tenant": st.column_config.TextColumn("Tenant Name"),
+            "Phone": st.column_config.TextColumn("Phone Number")
+        },
+        key="main_tenant_editor"
+    )
+    
+    if not edited_tenant_df.equals(st.session_state.tenant_df):
+        st.session_state.tenant_df = edited_tenant_df
+        save_tenants(edited_tenant_df)
+
+st.markdown("---")
+
+if not USERNAME or not PASSWORD:
+    st.error("Please configure credentials.")
+else:
+    if "df_curr" not in st.session_state:
+        try:
+            res = fetch_emporia_data(USERNAME, PASSWORD)
+            if res[0] is not None:
+                df_prev, df_curr, prev_label, curr_label = res
+                st.session_state.df_prev = df_prev
+                st.session_state.df_curr = df_curr
+                st.session_state.prev_label = prev_label
+                st.session_state.curr_label = curr_label
+        except Exception as e:
+            st.error(f"Failed to fetch Emporia data automatically: {e}")
+
+    if st.button("🔄 Refresh Energy Data", type="primary"):
+        with st.spinner("Connecting to Emporia..."):
+            try:
+                res = fetch_emporia_data(USERNAME, PASSWORD)
+                if res[0] is not None:
+                    df_prev, df_curr, prev_label, curr_label = res
+                    st.session_state.df_prev = df_prev
+                    st.session_state.df_curr = df_curr
+                    st.session_state.prev_label = prev_label
+                    st.session_state.curr_label = curr_label
+                    st.success("Data refreshed successfully!")
+                else:
+                    st.warning("Could not refresh live data feed due to AWS Cognito cloud IP restrictions.")
+            except Exception as e:
+                st.error(f"Failed to fetch Emporia data: {e}")
+
+    if "df_curr" in st.session_state and st.session_state.df_curr is not None:
+        df_prev = pd.merge(st.session_state.tenant_df, st.session_state.df_prev, on="Device Name", how="left")
+        df_curr = pd.merge(st.session_state.tenant_df, st.session_state.df_curr, on="Device Name", how="left")
+
+        tab1, tab2 = st.tabs([f"📊 Current Month: {st.session_state.curr_label}", f"📅 Previous Month: {st.session_state.prev_label}"])
+
+        with tab1:
+            st.subheader(f"Month-to-Date Usage & Cost for {st.session_state.curr_label}")
+            col1, col2 = st.columns(2)
+            col1.metric("MTD Usage (kWh)", f"{df_curr['Usage (kWh)'].sum():,.2f} kWh")
+            col2.metric("MTD Estimated Cost", f"${df_curr['Estimated Cost ($)'].sum():,.0f}")
+            
+            st.markdown("### 📱 Quick-Text Tenants (Current Month)")
+            for _, row in df_curr.iterrows():
+                phone = str(row.get("Phone", "")).strip()
+                tenant_name = row.get("Tenant", "Tenant")
+                cost = row.get("Estimated Cost ($)", 0)
+                if phone and phone != "nan" and phone != "":
+                    msg = f"Hola {tenant_name}, tu factura de luz es ${cost}."
+                    sms_url = f"sms:{phone}?body={urllib.parse.quote(msg)}"
+                    st.markdown(f"🔹 **{tenant_name}** (${cost}) → [💬 Send SMS Text]({sms_url})")
+            st.markdown("---")
+
+            st.dataframe(
+                df_curr,
+                use_container_width=True,
+                hide_index=True,
+                column_config={
+                    "Estimated Cost ($)": st.column_config.NumberColumn(format="$%d")
+                }
+            )
+
+        with tab2:
+            st.subheader(f"Usage & Cost Breakdown for {st.session_state.prev_label}")
+            col1, col2 = st.columns(2)
+            col1.metric("Total Usage (kWh)", f"{df_prev['Usage (kWh)'].sum():,.2f} kWh")
+            col2.metric("Total Estimated Cost", f"${df_prev['Estimated Cost ($)'].sum():,.0f}")
+            
+            st.markdown("### 📱 Quick-Text Tenants (Previous Month)")
+            for _, row in df_prev.iterrows():
+                phone = str(row.get("Phone", "")).strip()
+                tenant_name = row.get("Tenant", "Tenant")
+                cost = row.get("Estimated Cost ($)", 0)
+                if phone and phone != "nan" and phone != "":
+                    msg = f"Hola {tenant_name}, tu factura de luz es ${cost}."
+                    sms_url = f"sms:{phone}?body={urllib.parse.quote(msg)}"
+                    st.markdown(f"🔹 **{tenant_name}** (${cost}) → [💬 Send SMS Text]({sms_url})")
+            st.markdown("---")
+
+            st.dataframe(
+                df_prev,
+                use_container_width=True,
+                hide_index=True,
+                column_config={
+                    "Estimated Cost ($)": st.column_config.NumberColumn(format="$%d")
+                }
+            )
+    else:
+        st.info("💡 **Tenant Directory & GitHub Sync Active**: Your wide table editor is fully functional. Live Emporia metrics are temporarily restricted by AWS Cognito from this cloud host network.")

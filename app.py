@@ -15,17 +15,18 @@ from pyemvue.enums import Scale, Unit
 # Page Config
 st.set_page_config(page_title="Emporia Energy Dashboard", page_icon="⚡", layout="wide")
 
-# Custom CSS to make specific buttons green
+# Custom CSS to force the refresh button to be green
 st.markdown("""
 <style>
-    /* Target the Force Refresh button using its label content */
-    div.stButton > button:has(div:contains("Force Refresh Energy Data")) {
+    /* Target buttons with the specific refresh text */
+    div.stButton > button[kind="primary"] {
         background-color: #28a745 !important;
+        border-color: #28a745 !important;
         color: white !important;
-        border: none !important;
     }
-    div.stButton > button:has(div:contains("Force Refresh Energy Data")):hover {
+    div.stButton > button[kind="primary"]:hover {
         background-color: #218838 !important;
+        border-color: #1e7e34 !important;
         color: white !important;
     }
 </style>
@@ -291,7 +292,7 @@ if "df_curr" in st.session_state and st.session_state.df_curr is not None:
             tenant_name = row.get("Tenant", "Tenant")
             cost = row.get("Estimated Cost ($)", 0)
             if phone and phone != "nan" and phone != "":
-                msg = f"Hola {tenant_name}, tu factura de luz estra ${cost}." if 'elt' in '' else f"Hola {tenant_name}, tu factura de luz es ${cost}."
+                msg = f"Hola {tenant_name}, tu factura de luz es ${cost}."
                 sms_url = f"sms:{phone}?body={urllib.parse.quote(msg)}"
                 st.markdown(f"🔹 **{tenant_name}** (${cost}) → [💬 Send SMS Text]({sms_url})")
         st.markdown("---")
